@@ -40,6 +40,7 @@
   </div>
   <div class="navbar-actions">
     <button class="nav-btn" onclick="showView('shop')" id="nav-shop">🏪 Shop</button>
+    <button class="nav-btn" onclick="showView('orders')" id="nav-orders">📦 My Orders</button>
     <button class="nav-btn" onclick="showView('cart')" id="nav-cart">
       🛒 Cart <span class="cart-count" id="cart-badge">0</span>
     </button>
@@ -269,7 +270,7 @@
               <input type="text" id="card-name" placeholder="Name as on card" oninput="this.value=this.value.toUpperCase()" />
             </div>
             <button class="btn btn-primary btn-full btn-lg" onclick="payWithCard()">
-              🔒 Pay <span id="card-pay-amount"></span>
+              📩 Send Payment Request
             </button>
           </div>
 
@@ -301,8 +302,8 @@
                 <div class="upi-amount-display" id="upi-amount-display"></div>
                 <div id="qr-canvas"></div>
                 <p style="font-size:12px;color:var(--text3);margin-bottom:20px">UPI ID: 9037129327@axl</p>
-                <button class="btn btn-success btn-full btn-lg" onclick="confirmUPIPayment()">
-                  ✅ I've Completed the Payment
+                <button class="btn btn-primary btn-full btn-lg" onclick="confirmUPIPayment()">
+                  📩 Send Payment Request
                 </button>
               </div>
             </div>
@@ -332,6 +333,22 @@
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: MY ORDERS
+     =================================================== -->
+<div id="view-orders" class="view">
+  <div class="view-content">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
+      <div>
+        <h2 class="section-title">My Orders</h2>
+        <p class="section-sub">Track all your current and past orders</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="showView('shop')">🏪 Continue Shopping</button>
+    </div>
+    <div id="my-orders-list"></div>
   </div>
 </div>
 

@@ -713,6 +713,67 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20p
   .admin-main { margin-left: 0; padding: 16px; }
 }
 
+
+/* ================================================================
+   MY ORDERS VIEW
+   ================================================================ */
+#my-orders-list { display: flex; flex-direction: column; gap: 20px; }
+
+.order-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: var(--transition);
+}
+.order-card:hover { border-color: var(--border2); box-shadow: var(--shadow-sm); }
+
+.order-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+  flex-wrap: wrap; gap: 10px;
+}
+.order-card-id {
+  font-family: 'Fraunces', serif;
+  font-size: 15px; font-weight: 700;
+  color: var(--accent);
+}
+.order-card-date { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.order-card-total {
+  font-family: 'Fraunces', serif;
+  font-size: 20px; font-weight: 700;
+  color: var(--text1);
+}
+
+.order-card-items { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+.order-card-item {
+  display: flex; align-items: center; gap: 14px;
+}
+.order-card-item img {
+  width: 52px; height: 52px;
+  border-radius: var(--radius-sm);
+  object-fit: cover; background: var(--bg3); flex-shrink: 0;
+}
+.order-card-item-info { flex: 1; min-width: 0; }
+.order-card-item-name {
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.order-card-item-qty { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.order-card-item-price {
+  font-size: 15px; font-weight: 700;
+  color: var(--text1); white-space: nowrap;
+}
+
+.order-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg3);
+  flex-wrap: wrap; gap: 8px;
+}
 /* ================================================================
    PRINT STYLES
    ================================================================ */

@@ -87,8 +87,9 @@ function showView(name) {
 
   // Refresh views on show
   if (name === 'cart')     renderCart();
-  if (name === 'shop')     { loadProducts(); }
+  if (name === 'shop')     loadProducts();
   if (name === 'checkout') renderCheckoutSummary();
+  if (name === 'orders')   loadMyOrders();
 
   // Highlight active nav
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
@@ -697,62 +698,7 @@ async function saveNewAddress() {
   } finally { hideSpinner(); }
 }
 
-// ----------------------------------------------------------------
-// RAZORPAY MOCK API  (https://razorpay-mock-api.mock.beeceptor.com)
-// ----------------------------------------------------------------
-const RAZORPAY_MOCK_BASE = 'https://razorpay-mock-api.mock.beeceptor.com';
 
-// Step 1 — Create a Razorpay order on the mock server (best-effort — CORS may block)
-async function createRazorpayOrder(amountInPaise) {
-  const res = await fetch(`${RAZORPAY_MOCK_BASE}/v1/orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      amount:   amountInPaise,
-      currency: 'INR',
-      receipt:  'rcpt_' + Date.now(),
-      notes:    { source: 'Bazaar Shop' },
-    }),
-  });
-  if (!res.ok) throw new Error(`Order creation failed: ${res.status}`);
-  return await res.json();
-}
-
-// Step 2 — Capture the payment against that order (best-effort)
-async function captureRazorpayPayment(paymentId, amountInPaise) {
-  const res = await fetch(`${RAZORPAY_MOCK_BASE}/v1/payments/${paymentId}/capture`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount: amountInPaise, currency: 'INR' }),
-  });
-  if (!res.ok) throw new Error(`Payment capture failed: ${res.status}`);
-  return await res.json();
-}
-
-// Wraps both steps — falls back gracefully if mock server is unreachable (CORS / network)
-async function callMockGateway(amountInPaise) {
-  try {
-    const rzpOrder      = await createRazorpayOrder(amountInPaise);
-    const mockPaymentId = rzpOrder.id
-      ? rzpOrder.id.replace('order_', 'pay_')
-      : 'pay_mock_' + Date.now();
-    const captured = await captureRazorpayPayment(mockPaymentId, amountInPaise);
-    return {
-      razorpayOrderId: rzpOrder.id    || null,
-      razorpayPayId:   captured.id    || mockPaymentId,
-      gatewayStatus:   captured.status || 'captured',
-    };
-  } catch(e) {
-    // Mock server unreachable (CORS, network) — payment already happened on the
-    // user's end (UPI transfer / card), so we log a local fallback ID and continue.
-    console.warn('Mock gateway unreachable, using local fallback:', e.message);
-    return {
-      razorpayOrderId: 'order_local_' + Date.now(),
-      razorpayPayId:   'pay_local_'   + Date.now(),
-      gatewayStatus:   'captured_local',
-    };
-  }
-}
 
 // ----------------------------------------------------------------
 // STEP 2 — PAYMENT UI
@@ -802,7 +748,7 @@ function selectUPIApp(el, appName) {
   new QRCode(qrDiv, { text: upiUrl, width: 200, height: 200, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.H });
 }
 
-// --- CARD PAYMENT via Mock API ---
+// --- CARD — Send Payment Request ---
 async function payWithCard() {
   const number = document.getElementById('card-number').value.replace(/\s/g,'');
   const expiry = document.getElementById('card-expiry').value;
@@ -814,63 +760,26 @@ async function payWithCard() {
   if (cvv.length < 3)  { toast('Enter a valid CVV.','error'); return; }
   if (!name)           { toast('Enter the cardholder name.','error'); return; }
 
-  showSpinner();
-  try {
-    const { total } = getCartTotals();
-    const amountPaise = Math.round(total * 100);
-
-    toast('Processing payment…');
-    const gw = await callMockGateway(amountPaise);
-
-    const paymentDetails = {
-      method:          'card',
-      last4:           number.slice(-4),
-      expiry,
-      cardName:        name,
-      gateway:         'razorpay_mock',
-      razorpayOrderId: gw.razorpayOrderId,
-      razorpayPayId:   gw.razorpayPayId,
-      gatewayStatus:   gw.gatewayStatus,
-      amountPaise,
-    };
-
-    toast('Payment successful ✅', 'success');
-    await placeOrder(paymentDetails);
-  } catch(e) {
-    toast('Payment failed: ' + e.message, 'error');
-  } finally { hideSpinner(); }
+  const paymentDetails = {
+    method:   'card',
+    last4:    number.slice(-4),
+    expiry,
+    cardName: name,
+  };
+  await placeOrder(paymentDetails);
 }
 
-// --- UPI PAYMENT via Mock API ---
+// --- UPI — Send Payment Request ---
 async function confirmUPIPayment() {
   const selectedApp = document.querySelector('.upi-app-btn.active');
   if (!selectedApp) { toast('Please select a UPI app first.','error'); return; }
   const appName = selectedApp.querySelector('.upi-app-name').textContent;
-
-  showSpinner();
-  try {
-    const { total } = getCartTotals();
-    const amountPaise = Math.round(total * 100);
-
-    toast('Verifying UPI payment…');
-    const gw = await callMockGateway(amountPaise);
-
-    const paymentDetails = {
-      method:          'upi',
-      app:             appName,
-      upiId:           '9037129327@axl',
-      gateway:         'razorpay_mock',
-      razorpayOrderId: gw.razorpayOrderId,
-      razorpayPayId:   gw.razorpayPayId,
-      gatewayStatus:   gw.gatewayStatus,
-      amountPaise,
-    };
-
-    toast('UPI Payment confirmed ✅', 'success');
-    await placeOrder(paymentDetails);
-  } catch(e) {
-    toast('Payment failed: ' + e.message, 'error');
-  } finally { hideSpinner(); }
+  const paymentDetails = {
+    method: 'upi',
+    app:    appName,
+    upiId:  '9037129327@axl',
+  };
+  await placeOrder(paymentDetails);
 }
 
 async function placeOrder(paymentDetails) {
@@ -878,9 +787,9 @@ async function placeOrder(paymentDetails) {
   showSpinner();
   try {
     const { subtotal, delivery, total } = getCartTotals();
-    const address  = addresses.find(a => a.id === selectedAddressId);
-    const orderId  = generateOrderId();
-    const eta      = calcETA();
+    const address = addresses.find(a => a.id === selectedAddressId);
+    const orderId = generateOrderId();
+    const eta     = calcETA();
 
     const orderData = {
       orderId,
@@ -893,35 +802,36 @@ async function placeOrder(paymentDetails) {
       address,
       paymentMethod:  paymentDetails.method,
       paymentDetails,
-      status:         'confirmed',
+      status:         'payment_pending',   // Admin must approve
       createdAt:      new Date(),
       eta,
     };
 
-    // 1. Save order
+    // 1. Save order with payment_pending status
     await db.collection('orders').doc(orderId).set(orderData);
 
-    // 2. Save payment record in its own collection for easy querying
+    // 2. Save payment request — admin sees this and approves/rejects
     await db.collection('payments').doc(orderId).set({
       orderId,
-      userId:        currentUser.uid,
-      userEmail:     currentUser.email,
-      amount:        total,
+      userId:         currentUser.uid,
+      userEmail:      currentUser.email,
+      userName:       address.name,
+      amount:         total,
       subtotal,
       deliveryCharge: delivery,
-      method:        paymentDetails.method,
-      details:       paymentDetails,
-      status:        'paid',
-      createdAt:     new Date(),
+      method:         paymentDetails.method,
+      details:        paymentDetails,
+      status:         'pending',           // pending → approved / rejected
+      createdAt:      new Date(),
     });
 
-    // 3. Save cart snapshot (useful for order history / analytics)
+    // 3. Update cart snapshot
     await db.collection('carts').doc(currentUser.uid).set({
-      userId:     currentUser.uid,
-      userEmail:  currentUser.email,
+      userId:      currentUser.uid,
+      userEmail:   currentUser.email,
       lastOrderId: orderId,
-      items:      [],          // cleared after checkout
-      updatedAt:  new Date(),
+      items:       [],
+      updatedAt:   new Date(),
     });
 
     // 4. Clear local cart
@@ -929,7 +839,7 @@ async function placeOrder(paymentDetails) {
     saveCartToStorage();
     updateCartBadge();
 
-    toast('Order placed successfully! 🎉', 'success');
+    toast('Payment request sent! Awaiting admin approval. 📩', 'success');
     showReceipt(orderData);
   } catch(e) {
     toast('Failed to place order: ' + e.message, 'error');
@@ -947,9 +857,9 @@ function showReceipt(order) {
 
   document.getElementById('receipt-content').innerHTML = `
     <div class="receipt-header">
-      <div class="receipt-check">✅</div>
-      <h1>Order Confirmed!</h1>
-      <p>Thank you for shopping with Bazaar</p>
+      <div class="receipt-check">📩</div>
+      <h1>Payment Request Sent!</h1>
+      <p>Your order is pending admin approval</p>
     </div>
     <div class="receipt-body">
       <!-- Order Info -->
@@ -957,7 +867,7 @@ function showReceipt(order) {
         <div class="receipt-section-title">Order Details</div>
         <div class="receipt-row"><span class="label">Order ID</span><span class="value" style="color:var(--accent);font-family:'Fraunces',serif">${order.orderId}</span></div>
         <div class="receipt-row"><span class="label">Order Date</span><span class="value">${new Date(order.createdAt?.toDate ? order.createdAt.toDate() : order.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div>
-        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-success">Confirmed</span></div>
+        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-gold">⏳ Awaiting Approval</span></div>
       </div>
 
       <!-- Products -->
@@ -986,7 +896,7 @@ function showReceipt(order) {
       <div class="receipt-section">
         <div class="receipt-section-title">Payment</div>
         <div class="receipt-row"><span class="label">Method</span><span class="value">${payDisplay}</span></div>
-        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-success">✅ Paid</span></div>
+        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-gold">⏳ Pending Admin Approval</span></div>
       </div>
 
       <!-- Address -->
@@ -1000,11 +910,110 @@ function showReceipt(order) {
       </div>
     </div>
     <div class="receipt-footer">
-      <div class="eta-badge">🚚 Estimated Delivery: ${order.eta}</div>
+      <div class="eta-badge">🚚 Est. Delivery (after approval): ${order.eta}</div>
       <div style="font-size:13px;color:var(--text2)">Questions? Email: support@bazaar.shop</div>
     </div>`;
 }
 
 function printReceipt() {
   window.print();
+}
+
+// ----------------------------------------------------------------
+// MY ORDERS VIEW
+// ----------------------------------------------------------------
+async function loadMyOrders() {
+  const container = document.getElementById('my-orders-list');
+  if (!container || !currentUser) return;
+  container.innerHTML = '<div class="empty-state"><div class="spinner" style="margin:0 auto"></div></div>';
+
+  try {
+    let snap;
+    try {
+      snap = await db.collection('orders')
+        .where('userId','==', currentUser.uid)
+        .orderBy('createdAt','desc')
+        .get();
+    } catch(e) {
+      snap = await db.collection('orders')
+        .where('userId','==', currentUser.uid)
+        .get();
+    }
+
+    const orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    orders.sort((a,b) => {
+      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt||0);
+      const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt||0);
+      return db_ - da;
+    });
+
+    if (!orders.length) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📦</div>
+          <h3>No orders yet</h3>
+          <p>Your orders will appear here once you place one.</p>
+          <button class="btn btn-primary" style="margin-top:16px" onclick="showView('shop')">Start Shopping</button>
+        </div>`;
+      return;
+    }
+
+    const statusMap = {
+      payment_pending: { label:'⏳ Awaiting Approval', cls:'badge-gold' },
+      confirmed:       { label:'✅ Confirmed',          cls:'badge-success' },
+      shipped:         { label:'🚚 Shipped',            cls:'badge-info' },
+      delivered:       { label:'📦 Delivered',          cls:'badge-success' },
+      rejected:        { label:'❌ Rejected',           cls:'badge-danger' },
+    };
+
+    container.innerHTML = orders.map(o => {
+      const st   = statusMap[o.status] || { label: o.status, cls:'badge-info' };
+      const date = (o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt||0))
+        .toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      const payMethod = o.paymentDetails?.method === 'card'
+        ? `💳 Card ···${o.paymentDetails?.last4||'****'}`
+        : `📱 ${o.paymentDetails?.app||'UPI'}`;
+
+      return `
+      <div class="order-card">
+        <div class="order-card-header">
+          <div>
+            <div class="order-card-id">${o.orderId}</div>
+            <div class="order-card-date">${date} &nbsp;·&nbsp; ${payMethod}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span class="badge ${st.cls}">${st.label}</span>
+            <span class="order-card-total">${fmtCurrency(o.total)}</span>
+          </div>
+        </div>
+        <div class="order-card-items">
+          ${(o.items||[]).map(item => `
+            <div class="order-card-item">
+              <img src="${item.imageUrl||'https://picsum.photos/seed/'+item.id+'/80/80'}" alt="${item.name}" />
+              <div class="order-card-item-info">
+                <div class="order-card-item-name">${item.name}</div>
+                <div class="order-card-item-qty">Qty: ${item.quantity} × ${fmtCurrency(item.price)}</div>
+              </div>
+              <div class="order-card-item-price">${fmtCurrency(item.price * item.quantity)}</div>
+            </div>`).join('')}
+        </div>
+        <div class="order-card-footer">
+          <div style="font-size:13px;color:var(--text2)">
+            📍 ${o.address?.city||''}, ${o.address?.state||''}
+          </div>
+          <div style="font-size:13px;color:var(--text2)">
+            🚚 ETA: ${o.eta||'—'}
+          </div>
+          ${o.status === 'payment_pending'
+            ? `<span class="badge badge-gold" style="font-size:12px">Payment under review</span>`
+            : o.status === 'rejected'
+            ? `<span class="badge badge-danger" style="font-size:12px">Contact support</span>`
+            : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+  } catch(e) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Failed to load orders</h3><p>${e.message}</p></div>`;
+  }
 }
