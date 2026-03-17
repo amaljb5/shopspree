@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bazaar — Online Shopping</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Firebase v9 compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- QR Code generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Firebase Config -->
+  <script src="firebase-config.js"></script>
+</head>
+<body>
+
+<!-- ===================== SPINNER ===================== -->
+<div class="spinner-overlay" id="spinner" style="display:none">
+  <div class="spinner"></div>
+</div>
+
+<!-- ===================== TOAST ===================== -->
+<div id="toast-container"></div>
+
+<!-- ===================== MODAL ===================== -->
+<div class="modal-overlay" id="modal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- ===================== NAVBAR ===================== -->
+<nav id="navbar">
+  <div class="navbar-brand">Baz<span>aar</span></div>
+  <div class="navbar-search">
+    <input type="text" id="search-input" placeholder="🔍  Search products…" oninput="handleSearch(this.value)" />
+  </div>
+  <div class="navbar-actions">
+    <button class="nav-btn" onclick="showView('shop')" id="nav-shop">🏪 Shop</button>
+    <button class="nav-btn" onclick="showView('cart')" id="nav-cart">
+      🛒 Cart <span class="cart-count" id="cart-badge">0</span>
+    </button>
+    <button class="nav-btn" onclick="handleLogout()">👋 Logout</button>
+  </div>
+</nav>
+
+<!-- ===================================================
+     VIEW: AUTH (Login / Register)
+     =================================================== -->
+<div id="view-auth" class="view active">
+  <div class="auth-container">
+    <!-- Left Brand Panel -->
+    <div class="auth-left">
+      <div class="auth-brand">Baz<span>aar</span></div>
+      <p class="auth-tagline">Your one-stop destination for quality products at unbeatable prices.</p>
+      <div class="auth-features">
+        <div class="auth-feature"><div class="auth-feature-icon">🚀</div><span>Lightning-fast delivery to your doorstep</span></div>
+        <div class="auth-feature"><div class="auth-feature-icon">🔒</div><span>100% secure payments with UPI & Cards</span></div>
+        <div class="auth-feature"><div class="auth-feature-icon">🎁</div><span>Exclusive deals and mega offers daily</span></div>
+        <div class="auth-feature"><div class="auth-feature-icon">↩️</div><span>Easy 7-day returns, no questions asked</span></div>
+      </div>
+    </div>
+    <!-- Right Form Panel -->
+    <div class="auth-right">
+      <!-- LOGIN FORM -->
+      <div class="auth-card" id="login-panel">
+        <h2 class="auth-title">Welcome back</h2>
+        <p class="auth-subtitle">Sign in to continue shopping</p>
+        <div class="form-group">
+          <label>Email address</label>
+          <input type="email" id="login-email" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()" id="login-btn">Sign In</button>
+        <p class="auth-toggle">Don't have an account? <a onclick="toggleAuthPanel('register')">Create one</a></p>
+      </div>
+      <!-- REGISTER FORM -->
+      <div class="auth-card" id="register-panel" style="display:none">
+        <h2 class="auth-title">Create account</h2>
+        <p class="auth-subtitle">Join thousands of happy shoppers</p>
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" placeholder="Your Name" />
+        </div>
+        <div class="form-group">
+          <label>Email address</label>
+          <input type="email" id="reg-email" placeholder="you@example.com" />
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" placeholder="Min. 6 characters" onkeydown="if(event.key==='Enter')doRegister()" />
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" onclick="doRegister()" id="reg-btn">Create Account</button>
+        <p class="auth-toggle">Already have an account? <a onclick="toggleAuthPanel('login')">Sign in</a></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: SHOP
+     =================================================== -->
+<div id="view-shop" class="view">
+  <div class="view-content">
+    <!-- Mega Discount Banner (shown conditionally) -->
+    <div id="mega-banner" class="mega-banner" style="display:none">
+      <div class="mega-banner-icon">🔥</div>
+      <div class="mega-banner-text">
+        <h3 id="mega-banner-title">MEGA OFFER</h3>
+        <p id="mega-banner-sub">Discount applied on all products!</p>
+      </div>
+    </div>
+
+    <!-- Banner Carousel -->
+    <div class="banner-section" id="banner-section" style="display:none">
+      <div class="banner-track" id="banner-track"></div>
+      <button class="banner-arrow prev" onclick="slideBanner(-1)">‹</button>
+      <button class="banner-arrow next" onclick="slideBanner(1)">›</button>
+      <div class="banner-nav" id="banner-dots"></div>
+    </div>
+
+    <!-- Filters & Section Title -->
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <div>
+        <h2 class="section-title">All Products</h2>
+        <p class="section-sub" id="products-count">Loading…</p>
+      </div>
+    </div>
+    <div class="shop-filters" id="category-filters">
+      <button class="filter-pill active" data-cat="all" onclick="filterByCategory(this,'all')">All</button>
+    </div>
+
+    <!-- Products Grid -->
+    <div class="products-grid" id="products-grid">
+      <div class="empty-state"><div class="empty-state-icon">🛍️</div><h3>Loading products…</h3></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: PRODUCT DETAIL
+     =================================================== -->
+<div id="view-product" class="view">
+  <div class="view-content">
+    <button class="btn btn-ghost btn-sm" onclick="showView('shop')" style="margin-bottom:24px">← Back to Shop</button>
+    <div class="product-detail-grid" id="product-detail-content">
+      <!-- Filled by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: CART
+     =================================================== -->
+<div id="view-cart" class="view">
+  <div class="view-content">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <div>
+        <h2 class="section-title">Your Cart</h2>
+        <p class="section-sub" id="cart-items-count">0 items</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="showView('shop')">← Continue Shopping</button>
+    </div>
+    <div id="cart-empty" class="empty-state" style="display:none">
+      <div class="empty-state-icon">🛒</div>
+      <h3>Your cart is empty</h3>
+      <p>Start adding some products!</p>
+      <button class="btn btn-primary" style="margin-top:16px" onclick="showView('shop')">Browse Products</button>
+    </div>
+    <div class="cart-grid" id="cart-filled">
+      <div class="cart-items-section" id="cart-items-list"></div>
+      <div class="cart-summary">
+        <h3>Order Summary</h3>
+        <div class="summary-row"><span class="label">Subtotal</span><span class="value" id="cart-subtotal">₹0</span></div>
+        <div class="summary-row"><span class="label">Delivery</span><span class="value" id="cart-delivery">₹0</span></div>
+        <p class="free-delivery-hint" id="delivery-hint" style="display:none"></p>
+        <hr class="divider" />
+        <div class="summary-total">
+          <span class="label">Total</span><span class="value" id="cart-total">₹0</span>
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" style="margin-top:20px" onclick="goToCheckout()">Proceed to Checkout →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: CHECKOUT
+     =================================================== -->
+<div id="view-checkout" class="view">
+  <div class="view-content">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
+      <h2 class="section-title">Checkout</h2>
+      <button class="btn btn-ghost btn-sm" onclick="showView('cart')">← Back to Cart</button>
+    </div>
+
+    <!-- Steps indicator -->
+    <div class="checkout-steps" style="margin-bottom:32px">
+      <div class="step-item" id="step-indicator-1">
+        <div class="step-num">1</div><span>Delivery Address</span>
+      </div>
+      <div class="step-divider"></div>
+      <div class="step-item" id="step-indicator-2">
+        <div class="step-num">2</div><span>Payment</span>
+      </div>
+    </div>
+
+    <div class="checkout-grid">
+      <!-- LEFT: Steps Content -->
+      <div>
+        <!-- STEP 1: ADDRESS -->
+        <div id="checkout-step-1">
+          <h3 style="font-size:18px;margin-bottom:16px">Delivery Address</h3>
+          <div class="addresses-grid" id="saved-addresses-list">
+            <!-- Filled by JS -->
+          </div>
+          <button class="btn btn-secondary btn-full" onclick="openAddAddressModal()" style="margin-bottom:20px">
+            ＋ Add New Address
+          </button>
+          <button class="btn btn-primary btn-full btn-lg" id="continue-to-payment-btn" onclick="goToPaymentStep()" disabled>
+            Continue to Payment →
+          </button>
+        </div>
+
+        <!-- STEP 2: PAYMENT -->
+        <div id="checkout-step-2" style="display:none">
+          <button class="btn btn-ghost btn-sm" onclick="goToAddressStep()" style="margin-bottom:20px">← Change Address</button>
+          <h3 style="font-size:18px;margin-bottom:16px">Payment Method</h3>
+          <div class="payment-tabs">
+            <div class="payment-tab active" id="tab-card" onclick="selectPaymentMethod('card')">
+              <div class="payment-tab-icon">💳</div>
+              <div class="payment-tab-label">Card</div>
+              <div class="payment-tab-sub">Debit / Credit</div>
+            </div>
+            <div class="payment-tab" id="tab-upi" onclick="selectPaymentMethod('upi')">
+              <div class="payment-tab-icon">📱</div>
+              <div class="payment-tab-label">UPI</div>
+              <div class="payment-tab-sub">Instant transfer</div>
+            </div>
+          </div>
+
+          <!-- Card Form -->
+          <div id="card-form">
+            <div class="form-group">
+              <label>Card Number</label>
+              <div class="card-input-wrapper">
+                <input type="text" id="card-number" placeholder="0000  0000  0000  0000" maxlength="19" oninput="formatCardNumber(this)" />
+                <span class="card-type-icon" id="card-type-icon">💳</span>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Expiry Date</label>
+                <input type="text" id="card-expiry" placeholder="MM / YY" maxlength="7" oninput="formatExpiry(this)" />
+              </div>
+              <div class="form-group">
+                <label>CVV</label>
+                <input type="text" id="card-cvv" placeholder="•••" maxlength="4" oninput="this.value=this.value.replace(/\D/g,'')" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Cardholder Name</label>
+              <input type="text" id="card-name" placeholder="Name as on card" oninput="this.value=this.value.toUpperCase()" />
+            </div>
+            <button class="btn btn-primary btn-full btn-lg" onclick="payWithCard()">
+              🔒 Pay <span id="card-pay-amount"></span>
+            </button>
+          </div>
+
+          <!-- UPI Form -->
+          <div id="upi-form" style="display:none">
+            <p style="font-size:14px;color:var(--text2);margin-bottom:16px">Select your UPI app to pay</p>
+            <div class="upi-apps">
+              <div class="upi-app-btn" onclick="selectUPIApp(this,'gpay')">
+                <div class="upi-app-icon">🟢</div>
+                <div class="upi-app-name">Google Pay</div>
+              </div>
+              <div class="upi-app-btn" onclick="selectUPIApp(this,'phonepe')">
+                <div class="upi-app-icon">🟣</div>
+                <div class="upi-app-name">PhonePe</div>
+              </div>
+              <div class="upi-app-btn" onclick="selectUPIApp(this,'paytm')">
+                <div class="upi-app-icon">🔵</div>
+                <div class="upi-app-name">Paytm</div>
+              </div>
+              <div class="upi-app-btn" onclick="selectUPIApp(this,'bhim')">
+                <div class="upi-app-icon">🟠</div>
+                <div class="upi-app-name">BHIM</div>
+              </div>
+            </div>
+            <div id="upi-qr-container" style="display:none">
+              <div class="upi-qr-section">
+                <h4 id="upi-app-selected-name">Scan & Pay</h4>
+                <p>Open your UPI app and scan the QR code below</p>
+                <div class="upi-amount-display" id="upi-amount-display"></div>
+                <div id="qr-canvas"></div>
+                <p style="font-size:12px;color:var(--text3);margin-bottom:20px">UPI ID: shop@paytm</p>
+                <button class="btn btn-success btn-full btn-lg" onclick="confirmUPIPayment()">
+                  ✅ I've Completed the Payment
+                </button>
+              </div>
+            </div>
+            <div id="upi-hint" style="text-align:center;color:var(--text3);font-size:13px;padding:20px">
+              Select a UPI app above to generate QR code
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Order Summary -->
+      <div class="order-summary">
+        <h3>Your Order</h3>
+        <div id="checkout-order-items"></div>
+        <hr class="divider" />
+        <div class="summary-row"><span class="label">Subtotal</span><span class="value" id="checkout-subtotal"></span></div>
+        <div class="summary-row"><span class="label">Delivery</span><span class="value" id="checkout-delivery"></span></div>
+        <hr class="divider" />
+        <div class="summary-total">
+          <span class="label">Total</span>
+          <span class="value" id="checkout-total" style="font-family:'Fraunces',serif;font-size:24px;color:var(--accent)"></span>
+        </div>
+        <div id="checkout-address-summary" style="margin-top:16px;display:none">
+          <hr class="divider" />
+          <div style="font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">Delivering to</div>
+          <div style="font-size:13px;color:var(--text2)" id="checkout-address-text"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     VIEW: RECEIPT
+     =================================================== -->
+<div id="view-receipt" class="view">
+  <div class="receipt-wrapper">
+    <div class="receipt-card" id="receipt-content">
+      <!-- Filled by JS -->
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;margin-top:24px" class="no-print">
+      <button class="btn btn-primary btn-lg" onclick="printReceipt()">🖨️ Print Receipt</button>
+      <button class="btn btn-secondary btn-lg" onclick="showView('shop')">🏪 Continue Shopping</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SCRIPTS ===================== -->
+<script src="app.js"></script>
+</body>
+</html>
