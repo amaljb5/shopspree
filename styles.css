@@ -726,7 +726,9 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20p
   overflow: hidden;
   transition: var(--transition);
 }
-.order-card:hover { border-color: var(--border2); box-shadow: var(--shadow-sm); }
+.order-card:hover { border-color: var(--accent); box-shadow: 0 8px 32px rgba(255,101,64,0.15); transform: translateY(-2px); }
+.order-card-footer .btn { opacity: 0; transition: opacity 0.2s ease; }
+.order-card:hover .order-card-footer .btn { opacity: 1; }
 
 .order-card-header {
   display: flex; align-items: center; justify-content: space-between;

@@ -986,6 +986,7 @@ async function loadMyOrders() {
       shipped:         { label:'🚚 Shipped',            cls:'badge-info' },
       delivered:       { label:'📦 Delivered',          cls:'badge-success' },
       rejected:        { label:'❌ Rejected',           cls:'badge-danger' },
+      cancelled:       { label:'🚫 Cancelled',          cls:'badge-danger' },
     };
 
     container.innerHTML = orders.map(o => {
@@ -996,8 +997,10 @@ async function loadMyOrders() {
         ? `💳 Card ···${o.paymentDetails?.last4||'****'}`
         : `📱 ${o.paymentDetails?.app||'UPI'}`;
 
+      const canCancel = ['payment_pending','confirmed'].includes(o.status);
+
       return `
-      <div class="order-card">
+      <div class="order-card" onclick="openOrderDetail('${o.id}')" style="cursor:pointer">
         <div class="order-card-header">
           <div>
             <div class="order-card-id">${o.orderId}</div>
@@ -1026,11 +1029,11 @@ async function loadMyOrders() {
           <div style="font-size:13px;color:var(--text2)">
             🚚 ETA: ${o.eta||'—'}
           </div>
-          ${o.status === 'payment_pending'
-            ? `<span class="badge badge-gold" style="font-size:12px">Payment under review</span>`
-            : o.status === 'rejected'
-            ? `<span class="badge badge-danger" style="font-size:12px">Contact support</span>`
-            : ''}
+          <div style="display:flex;gap:8px;margin-left:auto" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-sm" onclick="openOrderDetail('${o.id}')">🔍 View Details</button>
+            <button class="btn btn-ghost btn-sm" onclick="printOrderReceipt('${o.id}')">🖨️ Print</button>
+            ${canCancel ? `<button class="btn btn-danger btn-sm" onclick="cancelOrder('${o.id}','${o.orderId}')">✕ Cancel</button>` : ''}
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -1038,4 +1041,122 @@ async function loadMyOrders() {
   } catch(e) {
     container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Failed to load orders</h3><p>${e.message}</p></div>`;
   }
+}
+
+// ----------------------------------------------------------------
+// ORDER DETAIL MODAL
+// ----------------------------------------------------------------
+async function openOrderDetail(docId) {
+  showSpinner();
+  try {
+    const snap = await db.collection('orders').doc(docId).get();
+    if (!snap.exists) { toast('Order not found.', 'error'); return; }
+    const o = { id: snap.id, ...snap.data() };
+
+    const statusMap = {
+      payment_pending: { label:'⏳ Awaiting Approval', cls:'badge-gold' },
+      confirmed:       { label:'✅ Confirmed',          cls:'badge-success' },
+      shipped:         { label:'🚚 Shipped',            cls:'badge-info' },
+      delivered:       { label:'📦 Delivered',          cls:'badge-success' },
+      rejected:        { label:'❌ Rejected',           cls:'badge-danger' },
+      cancelled:       { label:'🚫 Cancelled',          cls:'badge-danger' },
+    };
+    const st = statusMap[o.status] || { label: o.status, cls:'badge-info' };
+    const payMethod = o.paymentDetails?.method === 'card'
+      ? `💳 Card ending in ${o.paymentDetails?.last4||'****'} (${o.paymentDetails?.cardName||''})`
+      : `📱 ${o.paymentDetails?.app||'UPI'} — ${o.paymentDetails?.upiId||''}`;
+    const date = (o.createdAt?.toDate ? o.createdAt.toDate() : new Date(o.createdAt||0))
+      .toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    const canCancel = ['payment_pending','confirmed'].includes(o.status);
+
+    openModal(`
+      <h3 class="modal-title" style="font-size:18px">Order Details</h3>
+
+      <!-- Header row -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+        <span style="font-family:'Fraunces',serif;color:var(--accent);font-size:16px;font-weight:700">${o.orderId}</span>
+        <span class="badge ${st.cls}">${st.label}</span>
+      </div>
+
+      <!-- Order info -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;font-size:13px">
+        <div><span style="color:var(--text3)">Date</span><br><strong>${date}</strong></div>
+        <div><span style="color:var(--text3)">ETA</span><br><strong>${o.eta||'—'}</strong></div>
+        <div><span style="color:var(--text3)">Payment</span><br><strong>${payMethod}</strong></div>
+        <div><span style="color:var(--text3)">Delivery to</span><br><strong>${o.address?.name||''}, ${o.address?.city||''}</strong></div>
+      </div>
+
+      <!-- Full address -->
+      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;font-size:13px;margin-bottom:20px">
+        <div style="font-weight:700;margin-bottom:4px">📍 Delivery Address</div>
+        <div style="color:var(--text2)">${o.address?.name} · ${o.address?.phone}</div>
+        <div style="color:var(--text2)">${o.address?.line1}${o.address?.line2?', '+o.address.line2:''}, ${o.address?.city}, ${o.address?.state} — ${o.address?.pincode}</div>
+      </div>
+
+      <!-- Items -->
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:10px">Items Ordered</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px">
+        ${(o.items||[]).map(item => `
+          <div style="display:flex;align-items:center;gap:12px">
+            <img src="${item.imageUrl||'https://picsum.photos/seed/'+item.id+'/80/80'}" style="width:44px;height:44px;border-radius:8px;object-fit:cover;background:var(--bg3);flex-shrink:0" />
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:600">${item.name}</div>
+              <div style="font-size:12px;color:var(--text3)">Qty: ${item.quantity} × ${fmtCurrency(item.price)}</div>
+            </div>
+            <div style="font-weight:700">${fmtCurrency(item.price * item.quantity)}</div>
+          </div>`).join('')}
+      </div>
+
+      <!-- Totals -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px">
+          <span style="color:var(--text2)">Subtotal</span><span>${fmtCurrency(o.subtotal)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:10px">
+          <span style="color:var(--text2)">Delivery</span><span>${o.deliveryCharge>0?fmtCurrency(o.deliveryCharge):'FREE'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:10px">
+          <span style="font-size:16px;font-weight:700">Total</span>
+          <span style="font-family:'Fraunces',serif;font-size:24px;color:var(--accent);font-weight:700">${fmtCurrency(o.total)}</span>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-secondary" style="flex:1" onclick="closeModal();printOrderReceipt('${o.id}')">🖨️ Print Receipt</button>
+        ${canCancel ? `<button class="btn btn-danger" style="flex:1" onclick="closeModal();cancelOrder('${o.id}','${o.orderId}')">✕ Cancel Order</button>` : ''}
+      </div>
+    `);
+  } catch(e) {
+    toast('Could not load order: ' + e.message, 'error');
+  } finally { hideSpinner(); }
+}
+
+// Build receipt HTML for a given order object and inject into receipt view, then print
+function printOrderReceipt(docId) {
+  showSpinner();
+  db.collection('orders').doc(docId).get().then(snap => {
+    if (!snap.exists) { toast('Order not found.', 'error'); hideSpinner(); return; }
+    const order = { id: snap.id, ...snap.data() };
+    showReceipt(order);
+    hideSpinner();
+    setTimeout(() => window.print(), 400);
+  }).catch(e => { toast('Error: ' + e.message, 'error'); hideSpinner(); });
+}
+
+// Cancel an order (only if payment_pending or confirmed)
+async function cancelOrder(docId, orderId) {
+  if (!confirm(`Cancel order ${orderId}? This cannot be undone.`)) return;
+  showSpinner();
+  try {
+    const batch = db.batch();
+    batch.update(db.collection('orders').doc(docId),   { status: 'cancelled', cancelledAt: new Date() });
+    batch.update(db.collection('payments').doc(orderId), { status: 'cancelled', cancelledAt: new Date() });
+    await batch.commit();
+    toast('Order cancelled.', 'success');
+    closeModal();
+    loadMyOrders();
+  } catch(e) {
+    toast('Failed to cancel: ' + e.message, 'error');
+  } finally { hideSpinner(); }
 }
