@@ -572,10 +572,32 @@ function renderCheckoutSummary() {
 // STEP 1 — ADDRESS
 async function loadAddresses() {
   if (!currentUser) return;
-  const snap = await db.collection('users').doc(currentUser.uid)
-    .collection('addresses').orderBy('createdAt','desc').get();
-  addresses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  renderAddressList();
+  try {
+    let snap;
+    try {
+      // Try ordered fetch first
+      snap = await db.collection('users').doc(currentUser.uid)
+        .collection('addresses').orderBy('createdAt','desc').get();
+    } catch(e) {
+      // Firestore index not built yet — fall back to unordered
+      snap = await db.collection('users').doc(currentUser.uid)
+        .collection('addresses').get();
+    }
+    addresses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Sort client-side so newest appears first
+    addresses.sort((a, b) => {
+      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return db_ - da;
+    });
+    renderAddressList();
+    // Auto-select the default address if one exists
+    const def = addresses.find(a => a.isDefault) || addresses[0];
+    if (def) selectAddress(def.id);
+  } catch(e) {
+    const container = document.getElementById('saved-addresses-list');
+    if (container) container.innerHTML = `<p style="color:var(--danger);font-size:14px;padding:8px 0">Failed to load addresses: ${e.message}</p>`;
+  }
 }
 
 function renderAddressList() {
