@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AURA | E-Commerce</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: rgba(30, 41, 59, 0.7);
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.5);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.15), transparent 25%);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            padding: 30px 40px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(to right, #60a5fa, #a855f7);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 40px;
+            max-width: 1200px;
+            width: 100%;
+            padding: 20px 40px;
+            box-sizing: border-box;
+            margin-bottom: 50px;
+        }
+
+        @media (max-width: 900px) {
+            .main-container {
+                flex-direction: column;
+            }
+        }
+
+        .products-grid {
+            flex: 2;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 24px;
+        }
+
+        .product-card {
+            background: var(--surface-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .product-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .product-card.selected {
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--primary-glow);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .product-card.selected::before {
+            content: "✓";
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: var(--primary);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .product-icon {
+            font-size: 40px;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .product-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        .product-price {
+            font-size: 16px;
+            color: #60a5fa;
+            font-weight: 600;
+        }
+
+        .checkout-panel {
+            flex: 1;
+            background: var(--surface-color);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 30px;
+            height: fit-content;
+            position: sticky;
+            top: 40px;
+        }
+
+        .checkout-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .selected-item-display {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+        }
+
+        .selected-item-name {
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .selected-item-price {
+            font-size: 24px;
+            font-weight: 800;
+            color: #60a5fa;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        input[type="text"], input[type="email"] {
+            width: 100%;
+            padding: 14px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            box-sizing: border-box;
+            outline: none;
+            transition: all 0.3s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-pay {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(to right, #2563eb, #3b82f6);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: 'Inter', sans-serif;
+            margin-top: 10px;
+        }
+
+        .btn-pay:hover {
+            box-shadow: 0 10px 20px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 20px 0;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">Shopspree</div>
+        <div style="color: var(--text-muted); font-size: 14px;">Your Premium E-Commerce Destination</div>
+    </header>
+
+    <div class="main-container">
+        <div class="products-grid" id="grid">
+            <!-- Products injected here -->
+        </div>
+
+        <div class="checkout-panel">
+            <div class="checkout-header">Checkout</div>
+            
+            <form action="{{ url_for('checkout') }}" method="POST">
+                <input type="hidden" name="order_id" value="{{ order_id }}">
+                <input type="hidden" name="amount" id="form-amount" value="">
+                <input type="hidden" name="item_description" id="form-item" value="">
+
+                <div id="selection-display">
+                    <div class="empty-state">Please select an item to continue</div>
+                </div>
+
+                <div id="checkout-form" style="display: none; animation: fadeIn 0.5s;">
+                    <div class="form-group">
+                        <label for="name">Full Name</label>
+                        <input type="text" id="name" name="customer_name" required placeholder="John Doe">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="customer_email" required placeholder="john@example.com">
+                    </div>
+                    
+                    <button type="submit" class="btn-pay">Proceed to Payment ➔</button>
+                    
+                    <div style="text-align: center; margin-top: 15px; font-size: 12px; color: var(--text-muted);">
+                        🔒 Secured by MockPay Gateway
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const products = [
+            { id: 1, name: "Test Item (UPI Check)", price: 1.00, icon: "🏷️" },
+            { id: 2, name: "AURA Chronograph Watch", price: 12499.00, icon: "⌚" },
+            { id: 3, name: "Limited Edition Sneakers", price: 9999.00, icon: "👟" },
+            { id: 4, name: "Noise-Cancelling Headphones", price: 14999.00, icon: "🎧" },
+            { id: 5, name: "Classic White Minimal T-Shirt", price: 1499.00, icon: "👕" },
+            { id: 6, name: "Polarized Sunglasses", price: 2999.00, icon: "🕶️" }
+        ];
+
+        let selectedProductId = null;
+
+        function renderProducts() {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            
+            products.forEach(p => {
+                const card = document.createElement('div');
+                card.className = `product-card ${selectedProductId === p.id ? 'selected' : ''}`;
+                card.onclick = () => selectProduct(p.id);
+                
+                card.innerHTML = `
+                    <span class="product-icon">${p.icon}</span>
+                    <div class="product-name">${p.name}</div>
+                    <div class="product-price">₹${p.price.toFixed(2)}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function selectProduct(id) {
+            selectedProductId = id;
+            renderProducts();
+            
+            const product = products.find(p => p.id === id);
+            
+            // Update Form
+            document.getElementById('form-amount').value = product.price;
+            document.getElementById('form-item').value = product.name;
+            
+            // Update UI
+            document.getElementById('selection-display').innerHTML = `
+                <div class="selected-item-display">
+                    <div class="selected-item-name">${product.name}</div>
+                    <div class="selected-item-price">₹${product.price.toFixed(2)}</div>
+                </div>
+            `;
+            
+            document.getElementById('checkout-form').style.display = 'block';
+        }
+
+        // Initialize
+        renderProducts();
+    </script>
+</body>
+</html>

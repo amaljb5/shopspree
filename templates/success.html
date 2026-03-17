@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Successful</title>
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: #f0fdf4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .receipt-card {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(22, 163, 74, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+            border-top: 6px solid #16a34a;
+        }
+        .icon-success {
+            background-color: #dcfce7;
+            color: #16a34a;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #1f2937;
+            margin: 0 0 10px;
+            font-size: 24px;
+        }
+        p {
+            color: #4b5563;
+            margin: 0 0 30px;
+            line-height: 1.5;
+        }
+        .receipt-details {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: left;
+            margin-bottom: 30px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        .detail-row:last-child {
+            margin-bottom: 0;
+            padding-top: 12px;
+            border-top: 1px dashed #d1d5db;
+            font-weight: bold;
+            font-size: 16px;
+            color: #111827;
+        }
+        .btn-home {
+            display: inline-block;
+            background-color: #1f2937;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        .btn-home:hover {
+            background-color: #374151;
+        }
+    </style>
+</head>
+<body>
+    <div class="receipt-card">
+        <div class="icon-success">✓</div>
+        <h1>Payment Successful!</h1>
+        <p>Thank you, {{ transaction.customer_name }}. Your mock payment has been processed successfully.</p>
+        
+        <div class="receipt-details">
+            <div class="detail-row">
+                <span class="label">Order ID:</span>
+                <span class="value">{{ transaction.order_id }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Item:</span>
+                <span class="value">{{ transaction.item_description }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Card ending in:</span>
+                <span class="value">{{ transaction.card_number_last_four }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Date:</span>
+                <span class="value">{{ transaction.timestamp.split()[0] if transaction.timestamp else 'Today' }}</span>
+            </div>
+            <div class="detail-row">
+                <span class="label">Amount Paid:</span>
+                <span class="value">₹{{ "%.2f"|format(transaction.amount) }}</span>
+            </div>
+        </div>
+        
+        <a href="{{ url_for('home') }}" class="btn-home">Return to Merchant</a>
+    </div>
+</body>
+</html>
