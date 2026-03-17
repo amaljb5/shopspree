@@ -92,6 +92,15 @@ function showView(name) {
 // ----------------------------------------------------------------
 auth.onAuthStateChanged(async user => {
   if (user) {
+    // If this is an admin account, redirect straight to the admin portal.
+    try {
+      const doc = await db.collection('users').doc(user.uid).get();
+      if (doc.exists && doc.data().isAdmin) {
+        window.location.href = 'admin.html';
+        return;
+      }
+    } catch(e) { /* non-critical — fall through to normal shop */ }
+
     currentUser = user;
     document.getElementById('navbar').classList.add('show');
     showView('shop');
