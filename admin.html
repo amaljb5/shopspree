@@ -165,7 +165,21 @@
               style="width:260px" oninput="filterOrders(this.value)" />
           </div>
         </div>
-        <div class="data-table-wrapper">
+
+        <!-- Sub-tabs -->
+        <div style="display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)">
+          <button id="subtab-orders-btn" onclick="switchOrdersSubTab('orders')"
+            style="padding:10px 20px;font-size:13px;font-weight:700;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">
+            📦 Orders
+          </button>
+          <button id="subtab-payments-btn" onclick="switchOrdersSubTab('payments')"
+            style="padding:10px 20px;font-size:13px;font-weight:700;background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);cursor:pointer">
+            💰 Payments
+          </button>
+        </div>
+
+        <!-- Orders sub-table -->
+        <div id="subtab-orders" class="data-table-wrapper">
           <table class="data-table">
             <thead>
               <tr>
@@ -181,6 +195,25 @@
             </thead>
             <tbody id="orders-tbody">
               <tr><td colspan="8" style="text-align:center;color:var(--text3);padding:40px">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Payments sub-table -->
+        <div id="subtab-payments" class="data-table-wrapper" style="display:none">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Method</th>
+                <th>Amount</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="payments-tbody">
+              <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:40px">Loading…</td></tr>
             </tbody>
           </table>
         </div>

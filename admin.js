@@ -185,12 +185,18 @@ function updateStats() {
 // ----------------------------------------------------------------
 async function loadAdminProducts() {
   try {
-    const snap = await db.collection('products').orderBy('name','asc').get();
+    let snap;
+    try {
+      snap = await db.collection('products').orderBy('name','asc').get();
+    } catch(e) {
+      snap = await db.collection('products').get();
+    }
     allProducts = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allProducts.sort((a,b) => (a.name||'').localeCompare(b.name||''));
     renderProductsTable();
   } catch(e) {
     document.getElementById('products-tbody').innerHTML =
-      `<tr><td colspan="7" style="text-align:center;color:var(--danger)">Error: ${e.message}</td></tr>`;
+      `<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:24px">Error loading products: ${e.message}</td></tr>`;
   }
 }
 
@@ -437,13 +443,67 @@ async function addSampleProducts() {
 // ----------------------------------------------------------------
 async function loadAdminOrders() {
   try {
-    const snap = await db.collection('orders').orderBy('createdAt','desc').get();
+    let snap;
+    try {
+      snap = await db.collection('orders').orderBy('createdAt','desc').get();
+    } catch(indexErr) {
+      // Firestore index not yet built — fall back to unordered fetch
+      snap = await db.collection('orders').get();
+    }
     allOrders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Sort client-side by date descending as a safe fallback
+    allOrders.sort((a, b) => {
+      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return db_ - da;
+    });
     renderOrdersTable(allOrders);
+    loadAdminPayments();
   } catch(e) {
     document.getElementById('orders-tbody').innerHTML =
-      `<tr><td colspan="8" style="text-align:center;color:var(--danger)">Error loading orders: ${e.message}</td></tr>`;
+      `<tr><td colspan="8" style="text-align:center;color:var(--danger);padding:24px">Error loading orders: ${e.message}</td></tr>`;
   }
+}
+
+async function loadAdminPayments() {
+  try {
+    let snap;
+    try {
+      snap = await db.collection('payments').orderBy('createdAt','desc').get();
+    } catch(e) {
+      snap = await db.collection('payments').get();
+    }
+    const payments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    payments.sort((a,b) => {
+      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      return db_ - da;
+    });
+    renderPaymentsTable(payments);
+  } catch(e) { /* payments collection may not exist yet */ }
+}
+
+function renderPaymentsTable(payments) {
+  const tbody = document.getElementById('payments-tbody');
+  if (!tbody) return;
+  if (!payments.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:40px">No payments recorded yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = payments.map(p => {
+    const method = p.method === 'card'
+      ? `💳 Card ···${p.details?.last4 || '****'}`
+      : `📱 ${p.details?.app || 'UPI'}`;
+    return `
+    <tr>
+      <td><span style="font-family:'Fraunces',serif;color:var(--accent);font-size:13px">${p.orderId}</span></td>
+      <td style="font-size:13px;color:var(--text2)">${fmtDate(p.createdAt)}</td>
+      <td style="font-size:13px">${p.userEmail || '—'}</td>
+      <td style="font-size:13px">${method}</td>
+      <td><strong style="color:var(--success)">${fmtCurrency(p.amount)}</strong></td>
+      <td><span class="badge badge-success">✅ Paid</span></td>
+    </tr>`;
+  }).join('');
 }
 
 function renderOrdersTable(orders) {
@@ -474,6 +534,28 @@ function renderOrdersTable(orders) {
   }).join('');
 }
 
+function switchOrdersSubTab(tab) {
+  const ordersDiv   = document.getElementById('subtab-orders');
+  const paymentsDiv = document.getElementById('subtab-payments');
+  const ordersBtn   = document.getElementById('subtab-orders-btn');
+  const paymentsBtn = document.getElementById('subtab-payments-btn');
+  if (tab === 'orders') {
+    ordersDiv.style.display   = 'block';
+    paymentsDiv.style.display = 'none';
+    ordersBtn.style.borderBottomColor   = 'var(--accent)';
+    ordersBtn.style.color               = 'var(--accent)';
+    paymentsBtn.style.borderBottomColor = 'transparent';
+    paymentsBtn.style.color             = 'var(--text2)';
+  } else {
+    ordersDiv.style.display   = 'none';
+    paymentsDiv.style.display = 'block';
+    paymentsBtn.style.borderBottomColor = 'var(--accent)';
+    paymentsBtn.style.color             = 'var(--accent)';
+    ordersBtn.style.borderBottomColor   = 'transparent';
+    ordersBtn.style.color               = 'var(--text2)';
+  }
+}
+
 function filterOrders(q) {
   const low = q.toLowerCase().trim();
   const filtered = allOrders.filter(o =>
@@ -490,10 +572,20 @@ function filterOrders(q) {
 // ----------------------------------------------------------------
 async function loadAdminBanners() {
   try {
-    const snap = await db.collection('banners').orderBy('order','asc').get();
+    let snap;
+    try {
+      snap = await db.collection('banners').orderBy('order','asc').get();
+    } catch(e) {
+      snap = await db.collection('banners').get();
+    }
     allBanners = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    allBanners.sort((a,b) => (a.order||0) - (b.order||0));
     renderBannersTable();
-  } catch(e) { /* no banners */ }
+    updateStats();
+  } catch(e) {
+    document.getElementById('banners-tbody').innerHTML =
+      `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:40px">No banners yet.</td></tr>`;
+  }
 }
 
 function renderBannersTable() {
