@@ -735,7 +735,7 @@ function selectUPIApp(el, appName) {
 
   // Generate QR
   const { total } = getCartTotals();
-  const upiUrl = `upi://pay?pa=bazaar@paytm&pn=Bazaar+Shop&am=${total.toFixed(2)}&cu=INR&tn=Bazaar+Order`;
+  const upiUrl = `upi://pay?pa=9037129327@axl&pn=Bazaar+Shop&am=${total.toFixed(2)}&cu=INR&tn=Bazaar+Order`;
   document.getElementById('upi-qr-container').style.display = 'block';
   document.getElementById('upi-hint').style.display = 'none';
 
@@ -763,7 +763,7 @@ async function confirmUPIPayment() {
   const selectedApp = document.querySelector('.upi-app-btn.active');
   if (!selectedApp) { toast('Please select a UPI app.','error'); return; }
   const appName = selectedApp.querySelector('.upi-app-name').textContent;
-  const paymentDetails = { method: 'upi', app: appName, upiId: 'bazaar@paytm' };
+  const paymentDetails = { method: 'upi', app: appName, upiId: '9037129327@axl' };
   await placeOrder(paymentDetails);
 }
 
