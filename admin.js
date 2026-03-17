@@ -466,6 +466,8 @@ async function loadAdminOrders() {
 }
 
 async function loadAdminPayments() {
+  const tbody = document.getElementById('payments-tbody');
+  if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">Loading…</td></tr>`;
   try {
     let snap;
     try {
@@ -475,46 +477,78 @@ async function loadAdminPayments() {
     }
     const payments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     payments.sort((a,b) => {
-      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const da  = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
       const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
       return db_ - da;
     });
     renderPaymentsTable(payments);
-  } catch(e) { /* payments collection may not exist yet */ }
+  } catch(e) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:24px">Error: ${e.message}</td></tr>`;
+  }
 }
 
 function renderPaymentsTable(payments) {
   const tbody = document.getElementById('payments-tbody');
   if (!tbody) return;
   if (!payments.length) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">No payments recorded yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">No payment requests yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = payments.map(p => {
-    const method    = p.method === 'card'
+    const method = p.method === 'card'
       ? `💳 Card ···${p.details?.last4 || '****'}`
       : `📱 ${p.details?.app || 'UPI'}`;
-    const rzpPayId  = p.details?.razorpayPayId   || '—';
-    const rzpOrdId  = p.details?.razorpayOrderId || '—';
-    const gwStatus  = p.details?.gatewayStatus   || p.status || 'paid';
-    const badge     = (gwStatus === 'captured' || gwStatus === 'paid')
-      ? `<span class="badge badge-success">✅ ${gwStatus}</span>`
-      : `<span class="badge badge-gold">${gwStatus}</span>`;
-    const shortId = id => id.length > 18 ? id.slice(0,18) + '…' : id;
+    const statusBadge = {
+      pending:  `<span class="badge badge-gold">⏳ Pending</span>`,
+      approved: `<span class="badge badge-success">✅ Approved</span>`,
+      rejected: `<span class="badge badge-danger">❌ Rejected</span>`,
+    }[p.status] || `<span class="badge badge-info">${p.status}</span>`;
+
+    const actions = p.status === 'pending' ? `
+      <div class="table-actions">
+        <button class="btn btn-success btn-sm" onclick="approvePayment('${p.orderId}')">✅ Approve</button>
+        <button class="btn btn-danger btn-sm"  onclick="rejectPayment('${p.orderId}')">❌ Reject</button>
+      </div>` : `<span style="color:var(--text3);font-size:13px">—</span>`;
+
     return `
     <tr>
       <td><span style="font-family:'Fraunces',serif;color:var(--accent);font-size:13px">${p.orderId}</span></td>
       <td style="font-size:13px;color:var(--text2)">${fmtDate(p.createdAt)}</td>
-      <td style="font-size:13px">${p.userEmail || '—'}</td>
+      <td style="font-size:13px">${p.userEmail || '—'}<br><small style="color:var(--text3)">${p.userName||''}</small></td>
       <td style="font-size:13px">${method}</td>
-      <td><strong style="color:var(--success)">${fmtCurrency(p.amount)}</strong></td>
-      <td style="font-size:11px;color:var(--text3);line-height:1.8">
-        <div title="${rzpPayId}"><strong style="color:var(--text2)">Pay:</strong> ${shortId(rzpPayId)}</div>
-        <div title="${rzpOrdId}"><strong style="color:var(--text2)">Ord:</strong> ${shortId(rzpOrdId)}</div>
-      </td>
-      <td>${badge}</td>
+      <td><strong style="color:var(--text1)">${fmtCurrency(p.amount)}</strong></td>
+      <td>${statusBadge}</td>
+      <td>${actions}</td>
     </tr>`;
   }).join('');
+}
+
+async function approvePayment(orderId) {
+  if (!confirm(`Approve payment for ${orderId}?`)) return;
+  showSpinner();
+  try {
+    const batch = db.batch();
+    batch.update(db.collection('payments').doc(orderId), { status: 'approved', approvedAt: new Date(), approvedBy: adminUser.email });
+    batch.update(db.collection('orders').doc(orderId),   { status: 'confirmed', updatedAt: new Date() });
+    await batch.commit();
+    toast(`Payment ${orderId} approved ✅`, 'success');
+    await loadAdminOrders();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideSpinner(); }
+}
+
+async function rejectPayment(orderId) {
+  if (!confirm(`Reject payment for ${orderId}? This will cancel the order.`)) return;
+  showSpinner();
+  try {
+    const batch = db.batch();
+    batch.update(db.collection('payments').doc(orderId), { status: 'rejected', rejectedAt: new Date(), rejectedBy: adminUser.email });
+    batch.update(db.collection('orders').doc(orderId),   { status: 'rejected', updatedAt: new Date() });
+    await batch.commit();
+    toast(`Payment ${orderId} rejected ❌`, 'error');
+    await loadAdminOrders();
+  } catch(e) { toast('Error: ' + e.message, 'error'); }
+  finally { hideSpinner(); }
 }
 
 function renderOrdersTable(orders) {
@@ -527,7 +561,20 @@ function renderOrdersTable(orders) {
     const payMethod = o.paymentDetails?.method === 'card'
       ? `💳 Card ···${o.paymentDetails?.last4 || '****'}`
       : `📱 ${o.paymentDetails?.app || 'UPI'}`;
-    const statusClass = { confirmed:'badge-success', pending:'badge-gold', shipped:'badge-info', delivered:'badge-success' }[o.status] || 'badge-info';
+    const statusClass = {
+      payment_pending: 'badge-gold',
+      confirmed:       'badge-success',
+      shipped:         'badge-info',
+      delivered:       'badge-success',
+      rejected:        'badge-danger',
+    }[o.status] || 'badge-info';
+    const statusLabel = {
+      payment_pending: '⏳ Awaiting Payment',
+      confirmed:       '✅ Confirmed',
+      shipped:         '🚚 Shipped',
+      delivered:       '📦 Delivered',
+      rejected:        '❌ Rejected',
+    }[o.status] || o.status;
     return `
     <tr>
       <td><span style="font-family:'Fraunces',serif;color:var(--accent);font-size:13px">${o.orderId}</span></td>
@@ -539,7 +586,7 @@ function renderOrdersTable(orders) {
       </td>
       <td><strong style="color:var(--accent)">${fmtCurrency(o.total)}</strong></td>
       <td style="font-size:13px">${payMethod}</td>
-      <td><span class="badge ${statusClass}">${o.status || 'confirmed'}</span></td>
+      <td><span class="badge ${statusClass}">${statusLabel}</span></td>
       <td style="font-size:12px;color:var(--text2)">${o.eta || '—'}</td>
     </tr>`;
   }).join('');
@@ -564,6 +611,7 @@ function switchOrdersSubTab(tab) {
     paymentsBtn.style.color             = 'var(--accent)';
     ordersBtn.style.borderBottomColor   = 'transparent';
     ordersBtn.style.color               = 'var(--text2)';
+    loadAdminPayments();   // always refresh when tab is opened
   }
 }
 
