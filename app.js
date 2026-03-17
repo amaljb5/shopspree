@@ -572,31 +572,36 @@ function renderCheckoutSummary() {
 // STEP 1 — ADDRESS
 async function loadAddresses() {
   if (!currentUser) return;
+  const container = document.getElementById('saved-addresses-list');
+  if (container) container.innerHTML = `<p style="color:var(--text3);font-size:13px;padding:8px 0">Loading addresses…</p>`;
   try {
+    // Force server fetch so we always get the latest saved addresses
     let snap;
     try {
-      // Try ordered fetch first
       snap = await db.collection('users').doc(currentUser.uid)
-        .collection('addresses').orderBy('createdAt','desc').get();
+        .collection('addresses').get({ source: 'server' });
     } catch(e) {
-      // Firestore index not built yet — fall back to unordered
       snap = await db.collection('users').doc(currentUser.uid)
         .collection('addresses').get();
     }
     addresses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Sort client-side so newest appears first
     addresses.sort((a, b) => {
-      const da = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const da  = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
       const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
       return db_ - da;
     });
     renderAddressList();
-    // Auto-select the default address if one exists
-    const def = addresses.find(a => a.isDefault) || addresses[0];
-    if (def) selectAddress(def.id);
+    // Auto-select default address (or first), keep existing if still valid
+    if (!selectedAddressId || !addresses.find(a => a.id === selectedAddressId)) {
+      const def = addresses.find(a => a.isDefault) || addresses[0];
+      if (def) selectAddress(def.id);
+    } else {
+      // Re-apply selection highlight without changing the ID
+      renderAddressList();
+      document.getElementById('continue-to-payment-btn').disabled = false;
+    }
   } catch(e) {
-    const container = document.getElementById('saved-addresses-list');
-    if (container) container.innerHTML = `<p style="color:var(--danger);font-size:14px;padding:8px 0">Failed to load addresses: ${e.message}</p>`;
+    if (container) container.innerHTML = `<p style="color:var(--danger);font-size:14px;padding:8px 0">Could not load addresses: ${e.message}</p>`;
   }
 }
 
@@ -873,15 +878,26 @@ async function placeOrder(paymentDetails) {
 // ----------------------------------------------------------------
 function showReceipt(order) {
   showView('receipt');
-  const payDisplay = order.paymentDetails.method === 'card'
-    ? `Card ending in ${order.paymentDetails.last4}`
-    : `${order.paymentDetails.app} (UPI)`;
+  const payDisplay = order.paymentDetails?.method === 'card'
+    ? `Card ending in ${order.paymentDetails?.last4}`
+    : `${order.paymentDetails?.app} (UPI)`;
+
+  // Dynamic header + status based on actual current order status
+  const statusConfig = {
+    payment_pending: { icon:'📩', title:'Payment Request Sent!',  sub:'Awaiting admin approval',     orderBadge:'<span class="badge badge-gold">⏳ Awaiting Approval</span>',  payBadge:'<span class="badge badge-gold">⏳ Pending Approval</span>',    eta: `Est. Delivery (after approval): ${order.eta}` },
+    confirmed:       { icon:'✅', title:'Order Confirmed!',        sub:'Thank you for your order',    orderBadge:'<span class="badge badge-success">✅ Confirmed</span>',         payBadge:'<span class="badge badge-success">✅ Approved</span>',          eta: `Estimated Delivery: ${order.eta}` },
+    shipped:         { icon:'🚚', title:'Order Shipped!',          sub:'Your order is on the way',    orderBadge:'<span class="badge badge-info">🚚 Shipped</span>',              payBadge:'<span class="badge badge-success">✅ Paid</span>',              eta: `Estimated Delivery: ${order.eta}` },
+    delivered:       { icon:'📦', title:'Order Delivered!',        sub:'Enjoy your purchase',         orderBadge:'<span class="badge badge-success">📦 Delivered</span>',         payBadge:'<span class="badge badge-success">✅ Paid</span>',              eta: `Delivered on: ${order.eta}` },
+    rejected:        { icon:'❌', title:'Payment Rejected',         sub:'Please contact support',      orderBadge:'<span class="badge badge-danger">❌ Rejected</span>',           payBadge:'<span class="badge badge-danger">❌ Rejected</span>',           eta: '' },
+    cancelled:       { icon:'🚫', title:'Order Cancelled',          sub:'This order has been cancelled', orderBadge:'<span class="badge badge-danger">🚫 Cancelled</span>',       payBadge:'<span class="badge badge-danger">🚫 Cancelled</span>',         eta: '' },
+  };
+  const sc = statusConfig[order.status] || statusConfig['payment_pending'];
 
   document.getElementById('receipt-content').innerHTML = `
     <div class="receipt-header">
-      <div class="receipt-check">📩</div>
-      <h1>Payment Request Sent!</h1>
-      <p>Your order is pending admin approval</p>
+      <div class="receipt-check">${sc.icon}</div>
+      <h1>${sc.title}</h1>
+      <p>${sc.sub}</p>
     </div>
     <div class="receipt-body">
       <!-- Order Info -->
@@ -889,7 +905,7 @@ function showReceipt(order) {
         <div class="receipt-section-title">Order Details</div>
         <div class="receipt-row"><span class="label">Order ID</span><span class="value" style="color:var(--accent);font-family:'Fraunces',serif">${order.orderId}</span></div>
         <div class="receipt-row"><span class="label">Order Date</span><span class="value">${new Date(order.createdAt?.toDate ? order.createdAt.toDate() : order.createdAt).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span></div>
-        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-gold">⏳ Awaiting Approval</span></div>
+        <div class="receipt-row"><span class="label">Status</span>${sc.orderBadge}</div>
       </div>
 
       <!-- Products -->
@@ -911,28 +927,28 @@ function showReceipt(order) {
         <div class="receipt-section-title">Payment Summary</div>
         <div class="receipt-row"><span class="label">Subtotal</span><span class="value">${fmtCurrency(order.subtotal)}</span></div>
         <div class="receipt-row"><span class="label">Delivery</span><span class="value">${order.deliveryCharge > 0 ? fmtCurrency(order.deliveryCharge) : 'FREE'}</span></div>
-        <div class="receipt-total-row"><span>Total Paid</span><span class="amount">${fmtCurrency(order.total)}</span></div>
+        <div class="receipt-total-row"><span>Total</span><span class="amount">${fmtCurrency(order.total)}</span></div>
       </div>
 
       <!-- Payment Method -->
       <div class="receipt-section">
         <div class="receipt-section-title">Payment</div>
         <div class="receipt-row"><span class="label">Method</span><span class="value">${payDisplay}</span></div>
-        <div class="receipt-row"><span class="label">Status</span><span class="badge badge-gold">⏳ Pending Admin Approval</span></div>
+        <div class="receipt-row"><span class="label">Status</span>${sc.payBadge}</div>
       </div>
 
       <!-- Address -->
       <div class="receipt-section">
         <div class="receipt-section-title">Delivery Address</div>
-        <div class="receipt-row"><span class="label">Name</span><span class="value">${order.address.name}</span></div>
-        <div class="receipt-row"><span class="label">Phone</span><span class="value">${order.address.phone}</span></div>
+        <div class="receipt-row"><span class="label">Name</span><span class="value">${order.address?.name||'—'}</span></div>
+        <div class="receipt-row"><span class="label">Phone</span><span class="value">${order.address?.phone||'—'}</span></div>
         <div class="receipt-row"><span class="label">Address</span>
-          <span class="value" style="text-align:right;max-width:60%">${order.address.line1}${order.address.line2?', '+order.address.line2:''}, ${order.address.city}, ${order.address.state} — ${order.address.pincode}</span>
+          <span class="value" style="text-align:right;max-width:60%">${order.address?.line1||''}${order.address?.line2?', '+order.address.line2:''}, ${order.address?.city||''}, ${order.address?.state||''} — ${order.address?.pincode||''}</span>
         </div>
       </div>
     </div>
     <div class="receipt-footer">
-      <div class="eta-badge">🚚 Est. Delivery (after approval): ${order.eta}</div>
+      ${sc.eta ? `<div class="eta-badge">🚚 ${sc.eta}</div>` : '<div></div>'}
       <div style="font-size:13px;color:var(--text2)">Questions? Email: support@bazaar.shop</div>
     </div>`;
 }
@@ -1135,13 +1151,26 @@ async function openOrderDetail(docId) {
 // Build receipt HTML for a given order object and inject into receipt view, then print
 function printOrderReceipt(docId) {
   showSpinner();
-  db.collection('orders').doc(docId).get().then(snap => {
+  // Force { source:'server' } to skip Firestore local cache — ensures we get
+  // the latest status (e.g. confirmed after admin approval)
+  db.collection('orders').doc(docId).get({ source: 'server' }).then(snap => {
     if (!snap.exists) { toast('Order not found.', 'error'); hideSpinner(); return; }
     const order = { id: snap.id, ...snap.data() };
+    closeModal();
     showReceipt(order);
     hideSpinner();
-    setTimeout(() => window.print(), 400);
-  }).catch(e => { toast('Error: ' + e.message, 'error'); hideSpinner(); });
+    setTimeout(() => window.print(), 700);
+  }).catch(e => {
+    // If server fetch fails (offline), fall back to cache
+    db.collection('orders').doc(docId).get().then(snap => {
+      if (!snap.exists) { toast('Order not found.', 'error'); hideSpinner(); return; }
+      const order = { id: snap.id, ...snap.data() };
+      closeModal();
+      showReceipt(order);
+      hideSpinner();
+      setTimeout(() => window.print(), 700);
+    }).catch(e2 => { toast('Error: ' + e2.message, 'error'); hideSpinner(); });
+  });
 }
 
 // Cancel an order (only if payment_pending or confirmed)
