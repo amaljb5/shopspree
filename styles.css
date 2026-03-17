@@ -778,9 +778,63 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 20p
    PRINT STYLES
    ================================================================ */
 @media print {
-  body { background: #fff !important; color: #000 !important; }
-  #navbar, .receipt-footer .btn, .no-print { display: none !important; }
-  .receipt-card { box-shadow: none !important; border: 1px solid #ddd !important; }
-  .receipt-header { background: #f5f5f5 !important; color: #000 !important; -webkit-print-color-adjust: exact; }
-  * { color-adjust: exact; }
+  /* Force single page */
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11px !important;
+  }
+
+  /* Hide everything except the receipt card */
+  body > *:not(#view-receipt) { display: none !important; }
+  #view-receipt { display: block !important; padding-top: 0 !important; }
+  .receipt-wrapper { padding: 0 !important; max-width: 100% !important; }
+  .no-print, #navbar, .receipt-footer .btn { display: none !important; }
+
+  /* Compact the card so it fits on one page */
+  .receipt-card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .receipt-header {
+    background: #f0f0f0 !important;
+    color: #000 !important;
+    padding: 14px 20px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .receipt-check { font-size: 28px !important; margin-bottom: 4px !important; }
+  .receipt-header h1 { font-size: 18px !important; margin-bottom: 2px !important; }
+  .receipt-header p  { font-size: 11px !important; }
+
+  .receipt-body { padding: 14px 20px !important; }
+  .receipt-section { margin-bottom: 10px !important; }
+  .receipt-section-title { font-size: 9px !important; margin-bottom: 4px !important; }
+  .receipt-row { padding: 4px 0 !important; font-size: 11px !important; }
+  .receipt-total-row { padding: 8px 0 !important; font-size: 13px !important; }
+  .receipt-total-row .amount { font-size: 18px !important; }
+
+  .receipt-product { padding: 5px 0 !important; }
+  .receipt-product img { width: 32px !important; height: 32px !important; }
+  .receipt-product-name { font-size: 11px !important; }
+  .receipt-product-qty  { font-size: 10px !important; }
+  .receipt-product-price { font-size: 11px !important; }
+
+  .receipt-footer {
+    padding: 10px 20px !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .eta-badge { font-size: 11px !important; padding: 4px 10px !important; }
+
+  * { color-adjust: exact; print-color-adjust: exact; }
 }
