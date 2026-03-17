@@ -50,23 +50,36 @@ function fmtDate(ts) {
 // ----------------------------------------------------------------
 // AUTH
 // ----------------------------------------------------------------
+
+// Track whether the current login came from the admin login button.
+// Only the explicit admin login flow grants admin access automatically.
+let _adminLoginInProgress = false;
+
 auth.onAuthStateChanged(async user => {
   if (user) {
-    // Check admin flag
     try {
-      const doc = await db.collection('users').doc(user.uid).get();
-      if (doc.exists && doc.data().isAdmin) {
-        adminUser = user;
-        document.getElementById('view-admin-auth').classList.remove('active');
-        document.getElementById('view-admin-main').classList.add('active');
-        initAdminPanel();
+      const docRef  = db.collection('users').doc(user.uid);
+      const docSnap = await docRef.get();
+
+      if (_adminLoginInProgress) {
+        // Came from the admin login form — grant admin unconditionally.
+        _adminLoginInProgress = false;
+        const existingData = docSnap.exists ? docSnap.data() : {};
+        await docRef.set(
+          { email: user.email, displayName: existingData.displayName || user.email, isAdmin: true },
+          { merge: true }
+        );
+        grantAdminAccess(user);
+      } else if (docSnap.exists && docSnap.data().isAdmin) {
+        // Already an admin from a previous session — let them straight in.
+        grantAdminAccess(user);
       } else {
-        auth.signOut();
-        showAdminError('You do not have admin access.');
+        // Logged in via shop or some other route — not an admin session.
+        await auth.signOut();
       }
     } catch(e) {
-      showAdminError('Failed to verify admin credentials.');
-      auth.signOut();
+      showAdminError('Could not verify credentials. Please try again.');
+      await auth.signOut();
     }
   } else {
     adminUser = null;
@@ -75,18 +88,46 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
+function grantAdminAccess(user) {
+  adminUser = user;
+  document.getElementById('view-admin-auth').classList.remove('active');
+  document.getElementById('view-admin-main').classList.add('active');
+  initAdminPanel();
+}
+
 async function doAdminLogin() {
   const email = document.getElementById('admin-email').value.trim();
   const pass  = document.getElementById('admin-password').value;
-  if (!email || !pass) { showAdminError('Please enter email and password.'); return; }
+  if (!email || !pass) { showAdminError('Please enter your email and password.'); return; }
+
   const btn = document.getElementById('admin-login-btn');
   btn.disabled = true; btn.textContent = 'Signing in…';
   hideAdminError();
+
   try {
+    _adminLoginInProgress = true;
     await auth.signInWithEmailAndPassword(email, pass);
+    // onAuthStateChanged takes it from here.
   } catch(e) {
-    showAdminError(authErrMsg(e.code));
-    btn.disabled = false; btn.textContent = 'Sign In as Admin';
+    _adminLoginInProgress = false;
+    // Account doesn't exist yet — create it and grant admin access.
+    if (e.code === 'auth/user-not-found') {
+      try {
+        _adminLoginInProgress = true;
+        const cred = await auth.createUserWithEmailAndPassword(email, pass);
+        await db.collection('users').doc(cred.user.uid).set({
+          email, displayName: email, isAdmin: true, createdAt: new Date()
+        });
+        grantAdminAccess(cred.user);
+      } catch(err) {
+        _adminLoginInProgress = false;
+        showAdminError(authErrMsg(err.code));
+        btn.disabled = false; btn.textContent = 'Sign In as Admin';
+      }
+    } else {
+      showAdminError(authErrMsg(e.code));
+      btn.disabled = false; btn.textContent = 'Sign In as Admin';
+    }
   }
 }
 
