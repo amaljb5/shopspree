@@ -71,9 +71,18 @@ function saveCartToStorage() {
 // VIEW MANAGEMENT
 // ----------------------------------------------------------------
 function showView(name) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  // Explicitly set display:none on every view first — this beats any ID-level
+  // CSS overrides (e.g. #view-auth { display:flex } would otherwise persist).
+  document.querySelectorAll('.view').forEach(v => {
+    v.classList.remove('active');
+    v.style.display = 'none';
+  });
   const el = document.getElementById('view-' + name);
-  if (el) el.classList.add('active');
+  if (el) {
+    el.classList.add('active');
+    // Auth view needs flex; all others use block.
+    el.style.display = (name === 'auth') ? 'flex' : 'block';
+  }
   window.scrollTo(0, 0);
 
   // Refresh views on show
@@ -90,23 +99,34 @@ function showView(name) {
 // ----------------------------------------------------------------
 // AUTH
 // ----------------------------------------------------------------
+// Called after a successful login or registration to decide where to send the user.
+async function handleAuthSuccess(user, welcomeMsg) {
+  try {
+    const doc = await db.collection('users').doc(user.uid).get();
+    if (doc.exists && doc.data().isAdmin) {
+      window.location.href = 'admin.html';
+      return;
+    }
+  } catch(e) { /* Firestore not reachable — treat as regular user */ }
+
+  // Regular customer — show the shop.
+  currentUser = user;
+  toast(welcomeMsg, 'success');
+  document.getElementById('navbar').classList.add('show');
+  showView('shop');
+  updateCartBadge();
+  loadGlobalSettings();
+  loadBanners();
+}
+
+// onAuthStateChanged handles page reloads / persisted sessions.
 auth.onAuthStateChanged(async user => {
   if (user) {
-    // If this is an admin account, redirect straight to the admin portal.
-    try {
-      const doc = await db.collection('users').doc(user.uid).get();
-      if (doc.exists && doc.data().isAdmin) {
-        window.location.href = 'admin.html';
-        return;
-      }
-    } catch(e) { /* non-critical — fall through to normal shop */ }
-
-    currentUser = user;
-    document.getElementById('navbar').classList.add('show');
-    showView('shop');
-    updateCartBadge();
-    loadGlobalSettings();
-    loadBanners();
+    // Only kick in if the shop is not already visible
+    // (avoids double-running when handleAuthSuccess already switched the view).
+    if (!document.getElementById('view-shop').classList.contains('active')) {
+      await handleAuthSuccess(user, '');
+    }
   } else {
     currentUser = null;
     document.getElementById('navbar').classList.remove('show');
@@ -131,8 +151,8 @@ async function doLogin() {
   const btn = document.getElementById('login-btn');
   btn.disabled = true; btn.textContent = 'Signing in…';
   try {
-    await auth.signInWithEmailAndPassword(email, pass);
-    toast('Welcome back! 👋', 'success');
+    const cred = await auth.signInWithEmailAndPassword(email, pass);
+    await handleAuthSuccess(cred.user, 'Welcome back! 👋');
   } catch(e) {
     toast(firebaseErrMsg(e.code), 'error');
   } finally { btn.disabled = false; btn.textContent = 'Sign In'; }
@@ -148,8 +168,11 @@ async function doRegister() {
   btn.disabled = true; btn.textContent = 'Creating account…';
   try {
     const cred = await auth.createUserWithEmailAndPassword(email, pass);
-    await db.collection('users').doc(cred.user.uid).set({ email, displayName: name, isAdmin: false, createdAt: new Date() });
-    toast('Account created! Welcome 🎉', 'success');
+    // Write user doc (best-effort — don't block navigation on failure).
+    db.collection('users').doc(cred.user.uid)
+      .set({ email, displayName: name, isAdmin: false, createdAt: new Date() })
+      .catch(() => {});
+    await handleAuthSuccess(cred.user, 'Account created! Welcome 🎉');
   } catch(e) {
     toast(firebaseErrMsg(e.code), 'error');
   } finally { btn.disabled = false; btn.textContent = 'Create Account'; }
