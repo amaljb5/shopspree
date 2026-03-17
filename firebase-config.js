@@ -5,13 +5,12 @@
 // ================================================================
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAtjvj3tRrfiuO-yMuq6e9Pp2d7Ejuxv3g",
-  authDomain: "shopspree-183e3.firebaseapp.com",
-  projectId: "shopspree-183e3",
-  storageBucket: "shopspree-183e3.firebasestorage.app",
-  messagingSenderId: "25934649331",
-  appId: "1:25934649331:web:10a9427ec116095f212486",
-  measurementId: "G-7B049K2TZQ"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
 // Initialize Firebase (guard against double-init)
