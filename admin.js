@@ -487,13 +487,20 @@ function renderPaymentsTable(payments) {
   const tbody = document.getElementById('payments-tbody');
   if (!tbody) return;
   if (!payments.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:40px">No payments recorded yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:40px">No payments recorded yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = payments.map(p => {
-    const method = p.method === 'card'
+    const method    = p.method === 'card'
       ? `💳 Card ···${p.details?.last4 || '****'}`
       : `📱 ${p.details?.app || 'UPI'}`;
+    const rzpPayId  = p.details?.razorpayPayId   || '—';
+    const rzpOrdId  = p.details?.razorpayOrderId || '—';
+    const gwStatus  = p.details?.gatewayStatus   || p.status || 'paid';
+    const badge     = (gwStatus === 'captured' || gwStatus === 'paid')
+      ? `<span class="badge badge-success">✅ ${gwStatus}</span>`
+      : `<span class="badge badge-gold">${gwStatus}</span>`;
+    const shortId = id => id.length > 18 ? id.slice(0,18) + '…' : id;
     return `
     <tr>
       <td><span style="font-family:'Fraunces',serif;color:var(--accent);font-size:13px">${p.orderId}</span></td>
@@ -501,7 +508,11 @@ function renderPaymentsTable(payments) {
       <td style="font-size:13px">${p.userEmail || '—'}</td>
       <td style="font-size:13px">${method}</td>
       <td><strong style="color:var(--success)">${fmtCurrency(p.amount)}</strong></td>
-      <td><span class="badge badge-success">✅ Paid</span></td>
+      <td style="font-size:11px;color:var(--text3);line-height:1.8">
+        <div title="${rzpPayId}"><strong style="color:var(--text2)">Pay:</strong> ${shortId(rzpPayId)}</div>
+        <div title="${rzpOrdId}"><strong style="color:var(--text2)">Ord:</strong> ${shortId(rzpOrdId)}</div>
+      </td>
+      <td>${badge}</td>
     </tr>`;
   }).join('');
 }

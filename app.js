@@ -697,7 +697,41 @@ async function saveNewAddress() {
   } finally { hideSpinner(); }
 }
 
-// STEP 2 — PAYMENT
+// ----------------------------------------------------------------
+// RAZORPAY MOCK API  (https://razorpay-mock-api.mock.beeceptor.com)
+// ----------------------------------------------------------------
+const RAZORPAY_MOCK_BASE = 'https://razorpay-mock-api.mock.beeceptor.com';
+
+// Step 1 — Create a Razorpay order on the mock server
+async function createRazorpayOrder(amountInPaise) {
+  const res = await fetch(`${RAZORPAY_MOCK_BASE}/v1/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      amount:   amountInPaise,
+      currency: 'INR',
+      receipt:  'rcpt_' + Date.now(),
+      notes:    { source: 'Bazaar Shop' },
+    }),
+  });
+  if (!res.ok) throw new Error(`Order creation failed: ${res.status}`);
+  return await res.json();   // returns { id, amount, currency, status, ... }
+}
+
+// Step 2 — Capture the payment against that order
+async function captureRazorpayPayment(paymentId, amountInPaise) {
+  const res = await fetch(`${RAZORPAY_MOCK_BASE}/v1/payments/${paymentId}/capture`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount: amountInPaise, currency: 'INR' }),
+  });
+  if (!res.ok) throw new Error(`Payment capture failed: ${res.status}`);
+  return await res.json();   // returns { id, status: "captured", amount, ... }
+}
+
+// ----------------------------------------------------------------
+// STEP 2 — PAYMENT UI
+// ----------------------------------------------------------------
 function selectPaymentMethod(method) {
   paymentMethod = method;
   document.getElementById('tab-card').classList.toggle('active', method === 'card');
@@ -715,10 +749,10 @@ function formatCardNumber(inp) {
   let v = inp.value.replace(/\D/g,'').substring(0,16);
   inp.value = v.match(/.{1,4}/g)?.join('  ') || v;
   const icon = document.getElementById('card-type-icon');
-  if (v.startsWith('4'))                     icon.textContent = '💳 VISA';
-  else if (v.startsWith('5'))                icon.textContent = '💳 MC';
+  if (v.startsWith('4'))                          icon.textContent = '💳 VISA';
+  else if (v.startsWith('5'))                     icon.textContent = '💳 MC';
   else if (v.startsWith('37')||v.startsWith('34')) icon.textContent = '💳 AMEX';
-  else                                       icon.textContent = '💳';
+  else                                            icon.textContent = '💳';
 }
 
 function formatExpiry(inp) {
@@ -733,7 +767,6 @@ function selectUPIApp(el, appName) {
   const names = { gpay:'Google Pay', phonepe:'PhonePe', paytm:'Paytm', bhim:'BHIM' };
   document.getElementById('upi-app-selected-name').textContent = `Pay with ${names[appName] || appName}`;
 
-  // Generate QR
   const { total } = getCartTotals();
   const upiUrl = `upi://pay?pa=9037129327@axl&pn=Bazaar+Shop&am=${total.toFixed(2)}&cu=INR&tn=Bazaar+Order`;
   document.getElementById('upi-qr-container').style.display = 'block';
@@ -744,6 +777,7 @@ function selectUPIApp(el, appName) {
   new QRCode(qrDiv, { text: upiUrl, width: 200, height: 200, colorDark: '#000', colorLight: '#fff', correctLevel: QRCode.CorrectLevel.H });
 }
 
+// --- CARD PAYMENT via Mock API ---
 async function payWithCard() {
   const number = document.getElementById('card-number').value.replace(/\s/g,'');
   const expiry = document.getElementById('card-expiry').value;
@@ -755,16 +789,80 @@ async function payWithCard() {
   if (cvv.length < 3)  { toast('Enter a valid CVV.','error'); return; }
   if (!name)           { toast('Enter the cardholder name.','error'); return; }
 
-  const paymentDetails = { method: 'card', last4: number.slice(-4), expiry, cardName: name };
-  await placeOrder(paymentDetails);
+  showSpinner();
+  try {
+    const { total } = getCartTotals();
+    const amountPaise = Math.round(total * 100);
+
+    // 1. Create order on Razorpay mock
+    toast('Contacting payment gateway…');
+    const rzpOrder = await createRazorpayOrder(amountPaise);
+
+    // 2. Simulate payment authorisation — mock API gives us a payment_id to capture
+    //    In real Razorpay this comes back from the checkout popup; here we derive it.
+    const mockPaymentId = rzpOrder.id
+      ? rzpOrder.id.replace('order_', 'pay_')
+      : 'pay_mock_' + Date.now();
+
+    // 3. Capture the payment
+    const captured = await captureRazorpayPayment(mockPaymentId, amountPaise);
+
+    const paymentDetails = {
+      method:          'card',
+      last4:           number.slice(-4),
+      expiry,
+      cardName:        name,
+      gateway:         'razorpay_mock',
+      razorpayOrderId: rzpOrder.id   || null,
+      razorpayPayId:   captured.id   || mockPaymentId,
+      gatewayStatus:   captured.status || 'captured',
+      amountPaise,
+    };
+
+    toast('Payment authorised ✅', 'success');
+    await placeOrder(paymentDetails);
+  } catch(e) {
+    toast('Payment failed: ' + e.message, 'error');
+  } finally { hideSpinner(); }
 }
 
+// --- UPI PAYMENT via Mock API ---
 async function confirmUPIPayment() {
   const selectedApp = document.querySelector('.upi-app-btn.active');
-  if (!selectedApp) { toast('Please select a UPI app.','error'); return; }
+  if (!selectedApp) { toast('Please select a UPI app first.','error'); return; }
   const appName = selectedApp.querySelector('.upi-app-name').textContent;
-  const paymentDetails = { method: 'upi', app: appName, upiId: '9037129327@axl' };
-  await placeOrder(paymentDetails);
+
+  showSpinner();
+  try {
+    const { total } = getCartTotals();
+    const amountPaise = Math.round(total * 100);
+
+    // 1. Create order
+    toast('Verifying UPI payment…');
+    const rzpOrder = await createRazorpayOrder(amountPaise);
+
+    // 2. Capture
+    const mockPaymentId = rzpOrder.id
+      ? rzpOrder.id.replace('order_', 'pay_')
+      : 'pay_mock_' + Date.now();
+    const captured = await captureRazorpayPayment(mockPaymentId, amountPaise);
+
+    const paymentDetails = {
+      method:          'upi',
+      app:             appName,
+      upiId:           '9037129327@axl',
+      gateway:         'razorpay_mock',
+      razorpayOrderId: rzpOrder.id   || null,
+      razorpayPayId:   captured.id   || mockPaymentId,
+      gatewayStatus:   captured.status || 'captured',
+      amountPaise,
+    };
+
+    toast('UPI Payment confirmed ✅', 'success');
+    await placeOrder(paymentDetails);
+  } catch(e) {
+    toast('Payment failed: ' + e.message, 'error');
+  } finally { hideSpinner(); }
 }
 
 async function placeOrder(paymentDetails) {
