@@ -1,5 +1,5 @@
 /* ================================================================
-   app.js — Bazaar E-Commerce App (User Side)
+   app.js — Shopspree E-Commerce App (User Side)
    ================================================================ */
 
 // ----------------------------------------------------------------
@@ -60,11 +60,11 @@ function calcETA() {
 }
 
 function loadCartFromStorage() {
-  try { return JSON.parse(localStorage.getItem('bazaar_cart')) || []; }
+  try { return JSON.parse(localStorage.getItem('shopspree_cart')) || []; }
   catch { return []; }
 }
 function saveCartToStorage() {
-  localStorage.setItem('bazaar_cart', JSON.stringify(cart));
+  localStorage.setItem('shopspree_cart', JSON.stringify(cart));
 }
 
 // ----------------------------------------------------------------
@@ -223,10 +223,16 @@ async function loadGlobalSettings() {
 // ----------------------------------------------------------------
 async function loadBanners() {
   try {
-    const snap = await db.collection('banners').where('active','==',true).orderBy('order','asc').get();
-    const banners = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Fetch all banners without compound query (avoids Firestore composite index requirement)
+    const snap = await db.collection('banners').get();
+    const banners = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(b => b.active === true)
+      .sort((a, b) => (a.order || 0) - (b.order || 0));
     if (banners.length > 0) renderBannerCarousel(banners);
-  } catch(e) { /* no banners configured */ }
+  } catch(e) {
+    console.warn('Banners failed to load:', e.message);
+  }
 }
 
 function renderBannerCarousel(banners) {
@@ -574,34 +580,45 @@ async function loadAddresses() {
   if (!currentUser) return;
   const container = document.getElementById('saved-addresses-list');
   if (container) container.innerHTML = `<p style="color:var(--text3);font-size:13px;padding:8px 0">Loading addresses…</p>`;
+
+  // Wait for auth token to be fully ready before hitting Firestore
+  try { await currentUser.getIdToken(true); } catch(e) { /* non-critical */ }
+
+  const fetchAddresses = async () => {
+    const snap = await db.collection('users').doc(currentUser.uid)
+      .collection('addresses').get();
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  };
+
   try {
-    // Force server fetch so we always get the latest saved addresses
-    let snap;
+    let list;
     try {
-      snap = await db.collection('users').doc(currentUser.uid)
-        .collection('addresses').get({ source: 'server' });
+      list = await fetchAddresses();
     } catch(e) {
-      snap = await db.collection('users').doc(currentUser.uid)
-        .collection('addresses').get();
+      // Brief retry after 800ms in case token just refreshed
+      await new Promise(r => setTimeout(r, 800));
+      list = await fetchAddresses();
     }
-    addresses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    addresses.sort((a, b) => {
+
+    addresses = list.sort((a, b) => {
       const da  = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
       const db_ = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
       return db_ - da;
     });
+
     renderAddressList();
-    // Auto-select default address (or first), keep existing if still valid
+
+    // Auto-select: keep current selection if still valid, else pick default or first
     if (!selectedAddressId || !addresses.find(a => a.id === selectedAddressId)) {
       const def = addresses.find(a => a.isDefault) || addresses[0];
       if (def) selectAddress(def.id);
     } else {
-      // Re-apply selection highlight without changing the ID
       renderAddressList();
       document.getElementById('continue-to-payment-btn').disabled = false;
     }
   } catch(e) {
-    if (container) container.innerHTML = `<p style="color:var(--danger);font-size:14px;padding:8px 0">Could not load addresses: ${e.message}</p>`;
+    if (container) container.innerHTML =
+      `<p style="color:var(--danger);font-size:14px;padding:8px 0">Could not load addresses: ${e.message}</p>`;
   }
 }
 
@@ -688,9 +705,8 @@ function openAddAddressModal() {
       <label>Pincode</label>
       <input type="text" id="a-pincode" placeholder="6-digit pincode" maxlength="6" />
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1);white-space:nowrap">
-      <input type="checkbox" id="a-default" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)" /> 
-      <span style="font-size:14px">Set as default address</span>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1)">
+      <input type="checkbox" id="a-default" /> <span style="font-size:14px">Set as default address</span>
     </label>
     <button class="btn btn-primary btn-full" onclick="saveNewAddress()">Save Address</button>
   `);
@@ -714,15 +730,30 @@ async function saveNewAddress() {
 
   try {
     showSpinner();
-    const ref = await db.collection('users').doc(currentUser.uid)
-      .collection('addresses').add({ name, phone, line1, line2, city, state, pincode, isDefault: isDef, createdAt: new Date() });
-    addresses.unshift({ id: ref.id, name, phone, line1, line2, city, state, pincode, isDefault: isDef });
-    closeModal();
-    renderAddressList();
+    const addrRef = db.collection('users').doc(currentUser.uid).collection('addresses');
+
+    // If marking as default, unset isDefault on all existing addresses first
+    if (isDef) {
+      const existing = await addrRef.get();
+      const batch = db.batch();
+      existing.docs.forEach(d => {
+        if (d.data().isDefault) batch.update(d.ref, { isDefault: false });
+      });
+      await batch.commit();
+    }
+
+    const ref = await addrRef.add({
+      name, phone, line1, line2, city, state, pincode,
+      isDefault: isDef, createdAt: new Date()
+    });
+
+    // Reload from Firestore so local state is in sync
+    await loadAddresses();
     selectAddress(ref.id);
+    closeModal();
     toast('Address saved! ✅', 'success');
   } catch(e) {
-    toast('Failed to save address. Try again.', 'error');
+    toast('Failed to save address: ' + e.message, 'error');
   } finally { hideSpinner(); }
 }
 
@@ -767,7 +798,7 @@ function selectUPIApp(el, appName) {
   document.getElementById('upi-app-selected-name').textContent = `Pay with ${names[appName] || appName}`;
 
   const { total } = getCartTotals();
-  const upiUrl = `upi://pay?pa=9037129327@axl&pn=Bazaar+Shop&am=${total.toFixed(2)}&cu=INR&tn=Bazaar+Order`;
+  const upiUrl = `upi://pay?pa=9037129327@axl&pn=Shopspree+Shop&am=${total.toFixed(2)}&cu=INR&tn=Shopspree+Order`;
   document.getElementById('upi-qr-container').style.display = 'block';
   document.getElementById('upi-hint').style.display = 'none';
 
@@ -950,7 +981,7 @@ function showReceipt(order) {
     </div>
     <div class="receipt-footer">
       ${sc.eta ? `<div class="eta-badge">🚚 ${sc.eta}</div>` : '<div></div>'}
-      <div style="font-size:13px;color:var(--text2)">Questions? Email: support@bazaar.shop</div>
+      <div style="font-size:13px;color:var(--text2)">Questions? Email: support@shopspree.shop</div>
     </div>`;
 }
 
