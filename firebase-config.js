@@ -22,6 +22,8 @@ if (!firebase.apps || !firebase.apps.length) {
 const db    = firebase.firestore();
 const auth  = firebase.auth();
 
+auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+
 // ================================================================
 // FIRESTORE DATA STRUCTURE (for reference):
 //
