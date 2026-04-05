@@ -688,8 +688,9 @@ function openAddAddressModal() {
       <label>Pincode</label>
       <input type="text" id="a-pincode" placeholder="6-digit pincode" maxlength="6" />
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1)">
-      <input type="checkbox" id="a-default" /> <span style="font-size:14px">Set as default address</span>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1);white-space:nowrap">
+      <input type="checkbox" id="a-default" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)" /> 
+      <span style="font-size:14px">Set as default address</span>
     </label>
     <button class="btn btn-primary btn-full" onclick="saveNewAddress()">Save Address</button>
   `);
