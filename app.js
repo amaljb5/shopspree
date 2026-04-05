@@ -624,19 +624,46 @@ async function loadAddresses() {
 
 function renderAddressList() {
   const container = document.getElementById('saved-addresses-list');
+  if (!container) return;
   if (addresses.length === 0) {
     container.innerHTML = `<p style="color:var(--text2);font-size:14px;padding:8px 0">No saved addresses yet. Add one below.</p>`;
     return;
   }
-  container.innerHTML = addresses.map(a => `
+  // Only the first address with isDefault should show the badge (prevent duplicates)
+  let defaultShown = false;
+  container.innerHTML = addresses.map(a => {
+    const showDefault = a.isDefault && !defaultShown;
+    if (a.isDefault) defaultShown = true;
+    return `
     <div class="address-card ${selectedAddressId===a.id?'selected':''}" onclick="selectAddress('${a.id}')">
       <div class="address-radio"></div>
-      <div class="address-info">
-        <h4>${a.name} &nbsp; ${a.phone}</h4>
+      <div class="address-info" style="flex:1">
+        <h4>${a.name} &nbsp; <span style="font-weight:400;color:var(--text2)">${a.phone}</span></h4>
         <p>${a.line1}${a.line2?', '+a.line2:''}, ${a.city}, ${a.state} — ${a.pincode}</p>
-        ${a.isDefault ? '<div class="address-default">✓ Default address</div>' : ''}
+        ${showDefault ? '<div class="address-default">✓ Default address</div>' : ''}
       </div>
-    </div>`).join('');
+      <button class="btn btn-ghost btn-sm" style="flex-shrink:0;color:var(--danger);border-color:transparent;padding:4px 8px"
+        onclick="event.stopPropagation();deleteAddress('${a.id}')" title="Delete address">🗑</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteAddress(id) {
+  if (!confirm('Delete this address?')) return;
+  showSpinner();
+  try {
+    await db.collection('users').doc(currentUser.uid)
+      .collection('addresses').doc(id).delete();
+    if (selectedAddressId === id) {
+      selectedAddressId = null;
+      document.getElementById('continue-to-payment-btn').disabled = true;
+      document.getElementById('checkout-address-summary').style.display = 'none';
+    }
+    await loadAddresses();
+    toast('Address deleted.', 'success');
+  } catch(e) {
+    toast('Failed to delete: ' + e.message, 'error');
+  } finally { hideSpinner(); }
 }
 
 function selectAddress(id) {
@@ -705,8 +732,9 @@ function openAddAddressModal() {
       <label>Pincode</label>
       <input type="text" id="a-pincode" placeholder="6-digit pincode" maxlength="6" />
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1)">
-      <input type="checkbox" id="a-default" /> <span style="font-size:14px">Set as default address</span>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1);white-space:nowrap">
+      <input type="checkbox" id="a-default" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)" /> 
+      <span style="font-size:14px">Set as default address</span>
     </label>
     <button class="btn btn-primary btn-full" onclick="saveNewAddress()">Save Address</button>
   `);
