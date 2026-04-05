@@ -732,9 +732,8 @@ function openAddAddressModal() {
       <label>Pincode</label>
       <input type="text" id="a-pincode" placeholder="6-digit pincode" maxlength="6" />
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1);white-space:nowrap">
-      <input type="checkbox" id="a-default" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--accent)" /> 
-      <span style="font-size:14px">Set as default address</span>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;color:var(--text1)">
+      <input type="checkbox" id="a-default" /> <span style="font-size:14px">Set as default address</span>
     </label>
     <button class="btn btn-primary btn-full" onclick="saveNewAddress()">Save Address</button>
   `);
@@ -894,8 +893,18 @@ async function placeOrder(paymentDetails) {
       eta,
     };
 
-    // 1. Save order with payment_pending status
-    await db.collection('orders').doc(orderId).set(orderData);
+    // 1. Save order with payment_pending status + decrement stock atomically
+    const batch = db.batch();
+    batch.set(db.collection('orders').doc(orderId), orderData);
+
+    // Decrement stock for each ordered item using Firestore increment
+    cart.forEach(item => {
+      const productRef = db.collection('products').doc(item.id);
+      batch.update(productRef, {
+        stock: firebase.firestore.FieldValue.increment(-item.quantity)
+      });
+    });
+    await batch.commit();
 
     // 2. Save payment request — admin sees this and approves/rejects
     await db.collection('payments').doc(orderId).set({
