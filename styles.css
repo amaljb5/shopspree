@@ -534,7 +534,7 @@ label { font-size: 13px; font-weight: 600; color: var(--text2); display: block; 
 .address-card.selected { border-color: var(--accent); background: var(--accent-bg); }
 .address-radio { width: 18px; height: 18px; border: 2px solid var(--border2); border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; transition: var(--transition); }
 .address-card.selected .address-radio { border-color: var(--accent); background: var(--accent); }
-.address-card.selected .address-radio::after { content: ''; width: 6px; height: 6px; background: #fff; border-radius: 50%; }
+.address-card.selected .address-radio::after { content: ''; width: 4px; height: 6px; background: #fff; border-radius: 50%; }
 .address-info h4 { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
 .address-info p { font-size: 13px; color: var(--text2); line-height: 1.5; }
 .address-default { font-size: 11px; font-weight: 700; color: var(--success); margin-top: 4px; }
